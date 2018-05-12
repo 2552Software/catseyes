@@ -105,6 +105,184 @@ public:
         video.setVerbose(true);
         video.listDevices();
         video.setDeviceID(1);
+        video.setup(ofGetWidth(), ofGetHeight());
+        video.setVerbose(true);
+        refresh();
+        set();
+    }
+    void refresh() {
+        video.resetAnchor();
+        
+        colorImg.allocate(ofGetWidth(), ofGetHeight());
+        grayImage.allocate(ofGetWidth(), ofGetHeight());
+        thresholdImage.allocate(ofGetWidth(), ofGetHeight());
+    }
+    void update() {
+        video.update();
+        //do we have a new frame?
+        if (video.isFrameNew()) {
+            colorImg.setFromPixels(video.getPixels());
+            grayImage = colorImg; // convert our color image to a grayscale image
+            grayImage.blurHeavily();
+            thresholdImage = grayImage; // make a copy for thresholding
+            thresholdImage.threshold(30); // turn any pixels above 100 white, and below 100 black
+            contourFinder.findContours(thresholdImage, 5, (ofGetWidth()*ofGetHeight()) / 4, 4, false, true);
+        }
+    }
+    void set(int x=0, int y=0) {
+        this->x = x;
+        this->y = y;
+    }
+    void draw() {
+        //if (thresholdImage.bAllocated) {
+            //ofSetColor(ofColor::blue, 20);
+            //thresholdImage.draw(x, y);
+       // }
+        // what does this do? contourFinder.draw();
+        for (int i = 0; i < contourFinder.nBlobs; i++) {
+            ofxCvBlob& blob = contourFinder.blobs[i];
+            ofColor c;
+            c.setHsb(i * 64, 255, 255);
+            ofSetColor(c, 100);
+            blob.draw(blob.boundingRect.x, blob.boundingRect.y);
+        }
+
+    }
+    ofxCvContourFinder contourFinder;
+    ofVideoGrabber video;
+    ofxCvColorImage colorImg;
+    ofxCvGrayscaleImage grayImage;
+    ofxCvGrayscaleImage thresholdImage;
+    int x, y;
+};
+
+// get all logic into one place
+class Art  {
+public:
+    void setup() {
+        countours.set(0,0);
+        countours.setup();
+        eye.setup();
+        eye.set(ManagedEye::Up, 1.0, 0.0); //bugbug size 1000 etc needs to be encapuslated
+        cam.setPosition(0, 0, 0); // keep eye behind glasses
+        light.enable();
+        light.setPosition(ofVec3f(000, 000, 2000));
+        light.lookAt(ofVec3f(0, 0, 0));
+        ofEnableLighting();
+        ofEnableSmoothing();
+        ofSetVerticalSync(true);
+
+        // Set the video grabber to the ofxPS3EyeGrabber.
+
+    }
+    void refresh() {
+        countours.refresh();
+        eye.refresh();
+    }
+    void update() {
+        countours.update();
+        eye.update();
+    }
+    void draw() {
+        ofEnableDepthTest();
+        cam.begin();
+        // do funky stuff with Tom's art now and then
+        ofEnableAlphaBlending();
+        countours.draw();
+        eye.draw();
+        ofDisableAlphaBlending();
+        cam.end();
+        // put on the sun shades
+    }
+    Contours countours;
+    ManagedEye eye;
+    ofLight light;
+    Camera cam;
+
+};
+
+class ofApp : public ofBaseApp {
+
+public:
+    Art art;
+    void setup();
+    void update();
+    void draw();
+    void keyPressed(int key);
+};
+
+
+/* reference
+void rotateY(ofImage &image, float degrees, int x, int y) {
+ofPushMatrix();
+ofTranslate(image.getWidth() / 2, image.getHeight() / 2, 0);//move pivot to centre
+ofRotateYDeg(degrees);
+ofPushMatrix();
+ofTranslate(-image.getWidth() / 2, -image.getHeight() / 2, 0);//move back by the centre offset
+image.draw(x, y);
+ofPopMatrix();
+ofPopMatrix();
+}
+
+*/
+        resize(ofGetWidth()*0.57, ofGetHeight()*0.57);
+        this->x = (ofGetWidth() / 2) - (getWidth() / 2);
+        this->y = (ofGetHeight() / 2) - (getHeight() / 2);
+    }
+
+    void set(MovementType mov, float vecX=0.0, float vecY=0.0, float incSize = 1.0, float maxUp=-40.0, float maxDown= 50.0) {
+        refresh();
+        this->vecX = vecX;
+        this->vecY = vecY;
+        this->incSize = incSize;
+        this->maxUp = maxUp;
+        this->maxDown = maxDown;
+        switch (mov) {
+        case Still:
+            inc = 0.0;
+            break;
+        case Up:
+        case Right:
+            inc = -incSize;
+            break;
+        case Down:
+        case Left:
+            inc = incSize;
+            break;
+        }
+    }
+    float degrees, vecX, vecY, maxUp, maxDown, inc, incSize;
+    int x, y;
+private:
+    MovementType type;
+    const std::string path = "eye9.jpg"; //bugbug hard coded path... ? maybe derived classes change this?
+};
+
+class Camera : public ofEasyCam {
+public:
+    // nice drawing tool
+    void drawit() {
+        float time = ofGetElapsedTimef();
+        float longitude = 10 * time;
+        float latitude = 10 * sin(time*0.8);
+        float radius = 800 + 50 * sin(time*0.4);
+        orbitDeg(longitude, latitude, radius, ofPoint(0, 0, 0));
+    }
+    //headTrackedCamera.begin();
+    //headTrackedCamera.panDeg(0.5);
+    //headTrackedCamera.truck(1.0);
+    //headTrackedCamera.dolly(-1.0);
+    //headTrackedCamera.boom(1.0);
+    //headTrackedCamera.tiltDeg(5);
+
+};
+
+class Contours {
+public:
+    void setup() {
+        video.setVerbose(true);
+        video.listDevices();
+        video.setDeviceID(1);
         targetColor = ofColor::red;
         refresh();
         set();
