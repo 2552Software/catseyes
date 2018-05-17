@@ -45,8 +45,375 @@ public:
         else {
             ofNoFill();
         }
-        ofDrawRectangle(rectToScale.x*scaleX, rectToScale.y*scaleY, rectToScale.width, rectToScale.height);
+        int flip = (640- rectToScale.x)*scaleX;
+        if (!fill) {
+            flip = rectToScale.x*scaleX;
+        }
+        ofDrawRectangle(flip, rectToScale.y*scaleY, rectToScale.width, rectToScale.height);
     }
+    bool found(int x, int y) {
+        return rect.inside(x, y);
+    }
+    glm::vec2 rotation;
+private:
+    ofRectangle rect; // target
+};
+class Art : public ofImage {
+public:
+};
+//
+class ManagedEye : public ofImage {
+public:
+    MotionData data;
+    struct Range {
+        int step, end;
+    };
+    struct Ranges {
+        Range X, Y;
+    };
+    Ranges rotation; // start to finish
+    void setup() {
+        load(path);
+        // size of eye relative to screen
+        resize(ofGetWidth()*0.57, ofGetHeight()*0.57); // size related to cat
+        memset(&rotation, 0, sizeof(rotation));
+    }
+    
+    void update(){
+        if ( rotation.X.step < rotation.X.end) {
+            rotation.X.step += 1;// ofGetLastFrameTime();
+            if (rotation.X.step > rotation.X.end) {
+                rotation.X.step = rotation.X.end;
+            }
+        }
+        if (rotation.Y.step < rotation.Y.end) {
+            rotation.Y.step += 1;// ofGetLastFrameTime();
+            if (rotation.Y.step > rotation.Y.end) {
+                rotation.Y.step = rotation.Y.end;
+            }
+        }
+    }
+    void push(MotionData motion) {
+        if (motionQ.size() > 200) {
+            motionQ.pop_front();
+        }
+        motionQ.push_back(motion);
+    }
+    size_t qSize() {
+        return motionQ.size();
+    }
+    MotionData pop() {
+        MotionData motion;
+        if (!motionQ.empty()) {
+            motion = motionQ.front(); // will draw most recent motion, no no motion, if q is empty
+            motionQ.pop_front();
+        }
+        return motion;
+    }
+    void add(const MotionData& end) { //bugbug add z
+        int segments = std::max(abs(end.rotation.x), abs(end.rotation.y));
+        if (!segments) {
+            push(end);
+            return;
+        }
+        std::unique_ptr<MotionData[]>  midpoints(new MotionData[segments]);
+        if (!midpoints) {
+            push(end);
+            return;
+        }
+        if (end.rotation.x) {
+            // do as many interm items as you want here, someting like 50% or such in a loop
+            for (int i = 0; i < segments; ++i) {
+                midpoints[i].rotation.x = end.rotation.x / segments * (i+1);  // target is already abosolute so keep it as is
+            }
+        }
+        if (end.rotation.y) {
+            for (int i = 0; i < segments; ++i) {
+                midpoints[i].rotation.y = end.rotation.y / segments * (i+1);  // target is already abosolute so keep it as is
+            }
+        }
+        // make nice paths with pixels then convert to degrees in a loop
+        for (int i = 0; i < segments; ++i) {
+            push(midpoints[i]);
+        }
+        push(end);
+    }
+    void draw() { // draw what is in vector
+       // if (!motionQ.empty()) {
+       //     draw(motionQ.front());
+        //    motionQ.pop_front();
+       //}
+        ofPushMatrix();
+        ofTranslate(getWidth() / 2, getHeight() / 2);//move pivot to centre
+                                                     //maybe this can be one line some day, still learning
+        if (rotation.X.step) {
+            ofRotateDeg(rotation.X.step, 1.0, 0.0, 0.0);
+        }
+        else if (rotation.X.end) {
+            ofRotateDeg(rotation.X.end, 1.0, 0.0, 0.0);
+        }
+        if (rotation.Y.step) {
+            ofRotateDeg(rotation.Y.step, 0.0, 1.0, 0.0);
+        }
+        else if (rotation.Y.end) {
+            ofRotateDeg(rotation.Y.end, 0.0, 1.0, 0.0);
+        }
+        ofPushMatrix();
+        ofTranslate(-getWidth() / 2, -getHeight() / 2, 0);//move back by the centre offset
+        ofImage::draw(ofGetWidth() / 2 - (getWidth() / 2), ofGetHeight() / 2 - (getHeight() / 3));
+        ofPopMatrix();
+        ofPopMatrix();
+    }
+    void draw(MotionData& motion) {
+        //ofRotate(50, 1, 0.5, 0); //rotates the coordinate system 50 degrees along the x-axis and 25 degrees on the y-axis
+        ofPushMatrix();
+        //ofTranslate(getWidth() / 2, getHeight() / 2);//move pivot to centre
+                                                     //maybe this can be one line some day, still learning
+        if (motion.rotation.x) {
+            ofRotateDeg(motion.rotation.x, 1.0, 0.0, 0.0);
+        }
+        if (motion.rotation.y) {
+            ofRotateDeg(motion.rotation.y, 0.0, 1.0, 0.0);
+        }
+        ofPushMatrix();
+        // scale now and then, art up toms photos, full screen , move to production machine, tighten up
+        //ofTranslate(-getWidth() / 2, -getHeight() / 2, 0);//move back by the centre offset
+        ofImage::draw(ofGetWidth() / 2 - (getWidth() / 2), ofGetHeight() / 2 - (getHeight() / 3));
+        ofPopMatrix();
+        ofPopMatrix();
+    }
+    void transparentDraw() {
+        ofEnableAlphaBlending(); // this would be a 50 % transparent red color
+        draw();
+        ofDisableAlphaBlending();
+    }
+private:
+    std::deque<MotionData> motionQ;
+    const std::string path = "eye3.jpg"; //bugbug hard coded path... ? maybe derived classes change this?
+};
+
+class Contours {
+public:
+    std::vector<MotionData> motionMap;
+
+    const MotionData& find(int x, int y) {
+        for (auto& motion : motionMap) {
+            if (motion.found(x, y)) {
+                return motion;
+            }
+        }
+        return motionMap[0];// default to empty data, no movement needed
+    }
+
+    void setup() {
+        //video.setVerbose(true);
+        vector<ofVideoDevice> devices= video.listDevices();
+        for (auto& device : devices) {
+            if (device.deviceName.find("FaceTime") == std::string::npos) {
+                video.setDeviceID(device.id);
+                break;
+            }
+        }
+        int w = imgWidth / 4;
+        int h = imgHeight / 4;
+        float val = 20.0;
+        float yval = -10.0;
+        motionMap.push_back(MotionData(glm::vec2(val, yval),  ofRectangle(0, 0, w, h))); // row 1, col 1
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w, 0, w, h)));// row 1, col 2
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w*2, 0, w, h)));// row 1, col 3
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w*3, 0, w, h)));// row 1, col 4
+
+        yval = -20.0;
+        val = 10.0;
+        motionMap.push_back(MotionData(glm::vec2(val, yval),  ofRectangle(0, h, w, h)));// row 2, col1
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w, h, w, h)));// row 2, col2
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w * 2, h, w, h)));// row 2, col3
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w * 3, h, w, h)));// row 2, col4
+
+        yval = 10;
+        val = 5.0;
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(0, h*2, w, h)));// row 3, col1
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w, h * 2, w, h)));// row 3, col2
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w * 2, h * 2, w, h)));// row 3, col3
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w * 3, h * 2, w, h)));// row 3, col4
+
+        yval = 20;
+        val = -10.0;
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(0, h*3, w, h)));// row 4, col1
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w, h * 3, w, h)));// row 4 , col2
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w * 2, h * 3, w, h)));// row 4, col3
+        motionMap.push_back(MotionData(glm::vec2(val, yval), ofRectangle(w * 3, h * 3, w, h)));// row 4, col4
+
+        eye.setup();
+        video.setVerbose(true);
+        video.setup(imgWidth, imgHeight);
+        colorImg.allocate(imgWidth, imgHeight);
+        grayImage.allocate(imgWidth, imgHeight);
+        grayDiff.allocate(imgWidth, imgHeight);
+        ofEnableLighting();
+        ofEnableSeparateSpecularLight();
+        light.enable();
+        light.setAmbientColor(ofColor::paleVioletRed);
+        light.setAreaLight(ofGetWidth(), ofGetHeight());
+        ofEnableSmoothing();
+
+    }
+    void update() {
+        video.update();
+        eye.update();
+        if (video.isFrameNew()) { // && (ofGetFrameNum() & 1) to slow things down
+            // clear less often
+            colorImg.setFromPixels(video.getPixels());
+            grayImage = colorImg; // convert our color image to a grayscale image
+            //grayImage.blurHeavily();
+            if (backgroundImage.bAllocated) {
+                grayDiff.absDiff(backgroundImage, grayImage);
+            }
+            backgroundImage = grayImage; // only track new items -- so eye moves when objects move
+            grayDiff.threshold(50); // turn any pixels above 30 white, and below 100 black
+            contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true);
+        }
+    }
+    void draw(const ofxCvBlob& blob){
+        ofPolyline line;
+        //video.draw(video.getWidth(),0,-video.getWidth(),video.getHeight());
+        for (int i = 0; i < blob.nPts; i++) {
+            line.addVertex(ofPoint(imgWidth -blob.pts[i].x, blob.pts[i].y));
+            //ofVertex(blob.pts[i].x, blob.pts[i].y);
+        }
+        line.close();
+        line.scale(cx/imgWidth, cy/imgHeight);
+        line.draw();
+        //ofSetHexColor(0xff0099);
+        //ofDrawRectangle(x + blob.boundingRect.x, y + blob.boundingRect.y, blob.boundingRect.width, blob.boundingRect.height);
+    }
+    void draw() {
+        //if (thresholdImage.bAllocated) {
+            //ofSetColor(ofColor::blue, 20);
+            //thresholdImage.draw(x, y);
+       // }
+        // what does this do? contourFinder.draw();
+        //ofSetColor(ofColor::blue, 20);
+        //grayImage.draw(0, 0);
+        //ofEnableAlphaBlending();
+        ofPushStyle();
+        ofNoFill();
+        //for (auto& motion : motionMap){
+        //    motion.draw(cx / imgWidth, cy / imgHeight);
+        //}
+        //ofNoFill();
+        ofSetLineWidth(1);// ofRandom(1, 5));
+        light.setAmbientColor(ofColor::paleVioletRed);
+        eye.draw();
+        bool first = true;
+        for (auto& blob : contourFinder.blobs) {
+            if (first) {
+                MotionData map = find(blob.centroid.x, blob.centroid.y);
+                if (eye.rotation.X.end <= eye.rotation.X.step) {
+                    eye.rotation.X.end = map.rotation.x; //blob.centroid.x*(cx / imgWidth);
+                    eye.rotation.X.step = 0;
+                    eye.rotation.Y.end = map.rotation.x; //blob.centroid.x*(cx / imgWidth);
+                    eye.rotation.Y.step = 0;
+                }
+                if (eye.rotation.Y.end <= eye.rotation.Y.step) {
+                    eye.rotation.Y.end = map.rotation.x; //blob.centroid.x*(cx / imgWidth);
+                    eye.rotation.Y.step = 0;
+                    eye.rotation.X.end = map.rotation.x; //blob.centroid.x*(cx / imgWidth);
+                    eye.rotation.X.step = 0;
+                }
+                //map.draw((cx / imgWidth), cy / imgHeight, true);
+                first = false; // largest blob is first
+                //eye.add(end);
+                //light.setAmbientColor(ofColor::paleVioletRed);
+                //eye.draw();
+            }
+            light.setAmbientColor(ofColor::orangeRed);
+            draw(blob);
+        }
+        //if (contourFinder.blobs.size() == 0) {
+        //    eye.draw(MotionData());
+        //}
+        ofPopStyle();
+    }
+    ofxCvContourFinder contourFinder;
+    ofVideoGrabber video;
+    ofxCvColorImage colorImg;
+    ofxCvGrayscaleImage grayImage, backgroundImage, grayDiff;
+    int imgWidth = 640;// 320; // the motion image
+    int imgHeight = 480;//240;
+    ManagedEye eye;
+    ofLight light;
+
+};
+
+// get all logic into one place
+class ElectricCat  {
+public:
+    void setup() {
+        ofSetColor(ofColor::white);
+        ofSetBackgroundColor(ofColor::black);
+        ofSetFrameRate(30);
+        countours.setup();
+        //cam.setPosition(0, 0, 0); // keep eye behind glasses
+        ofSetVerticalSync(true);
+        // Set the video grabber to the ofxPS3EyeGrabber.
+    }
+    void update() {
+        countours.update();
+    }
+    void draw() {
+        ofEnableDepthTest();
+       //cam.begin();
+        // do funky stuff with Tom's art now and then
+       countours.draw();
+       //cam.end();
+        // put on the sun shades
+    }
+    Contours countours;
+    Camera cam;
+
+};
+
+class ofApp : public ofBaseApp {
+
+public:
+    ElectricCat art;
+    void setup() {
+        art.setup();
+    }
+
+    void update() {
+        art.update();
+    }
+
+    void draw() {
+        art.draw();
+    }
+
+    void keyPressed(int key) {
+        if (key == 'k') {
+            ofToggleFullscreen();
+        }
+        else if (key == 'f') {
+            ofToggleFullscreen();
+        }
+    }
+};
+
+
+/* reference
+void rotateY(ofImage &image, float degrees, int x, int y) {
+ofPushMatrix();
+ofTranslate(image.getWidth() / 2, image.getHeight() / 2, 0);//move pivot to centre
+ofRotateYDeg(degrees);
+ofPushMatrix();
+ofTranslate(-image.getWidth() / 2, -image.getHeight() / 2, 0);//move back by the centre offset
+image.draw(x, y);
+ofPopMatrix();
+ofPopMatrix();
+}
+
+*/
     bool found(int x, int y) {
         return rect.inside(x, y);
     }
