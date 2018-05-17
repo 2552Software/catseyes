@@ -66,6 +66,263 @@ class ManagedEye : public ofImage {
 public:
     MotionData data;
     struct Range {
+        float end;
+    };
+    struct Ranges {
+        Range X, Y;
+    };
+    void setup() {
+        load(path);
+        // size of eye relative to screen
+        resize(ofGetWidth()*0.57, ofGetHeight()*0.57); // size related to cat
+        memset(&rotation, 0, sizeof(rotation));
+    }
+    void set(const MotionData&motion) {
+        rotation.X.end = motion.rotation.x;
+        rotation.Y.end = motion.rotation.y;
+    }
+    void update(){
+    }
+    void draw() { // draw what is in vector
+        ofPushMatrix();
+        //ofTranslate(getWidth() / 2, getHeight() / 2, 0);//move pivot to centre
+        ofTranslate(getWidth() / 2, getHeight() / 2, 0);
+        //rotation.X.end
+        if (rotation.X.end) {
+            int i = 0;
+        }
+        ofRotateXDeg(rotation.X.end);
+        ofRotateYDeg(rotation.Y.end);
+        ofPushMatrix();
+        ofTranslate(-getWidth() / 2, -getHeight() / 2, 0);//move back by the centre offset
+        ofImage::draw(ofGetWidth() / 2 - (getWidth() / 2), ofGetHeight() / 2 - (getHeight() / 3));  
+        ofPopMatrix();
+        ofPopMatrix();
+    }
+    void transparentDraw() {
+        ofEnableAlphaBlending(); // this would be a 50 % transparent red color
+        draw();
+        ofDisableAlphaBlending();
+    }
+private:
+    Ranges rotation; // start to finish
+    const std::string path = "eye3.jpg"; //bugbug hard coded path... ? maybe derived classes change this?
+};
+
+class Contours {
+public:
+    std::vector<MotionData> motionMap;
+
+    const MotionData& find(int x, int y) {
+        for (auto& motion : motionMap) {
+            if (motion.found(x, y)) {
+                return motion;
+            }
+        }
+        return motionMap[0];// default to empty data, no movement needed
+    }
+    //v.x - motion x, v.y motion y, v.w - width, v.z - length
+    void add(const ofRectangle& grid) { // private
+        float w = grid.getWidth();
+        float h = grid.getHeight();
+        float row = motionMap.size()/4;
+        motionMap.push_back(MotionData(glm::vec2(grid.getX(), grid.getY()), ofRectangle(w*0, row*h, w, h))); //ex: row 1, col 1
+        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 5.0, grid.getY() + 5.0), ofRectangle(w*1, row*h, w, h)));// row 1, col 2
+        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 10.0, grid.getY() + 10.0), ofRectangle(w * 2, row*h, w, h)));// row 1, col 3
+        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 15.0, grid.getY() + 15.0), ofRectangle(w * 3, row*h, w, h)));// row 1, col 4
+    }
+    void setup() {
+        //video.setVerbose(true);
+        vector<ofVideoDevice> devices= video.listDevices();
+        for (auto& device : devices) {
+            if (device.deviceName.find("FaceTime") == std::string::npos) {
+                video.setDeviceID(device.id);
+                break;
+            }
+        }
+        float w = imgWidth / 4;
+        float h = imgHeight / 4;
+        // 0-360
+        add(ofRectangle(30.0, -30.0, w, h)); // col 0, % of 180
+        add(ofRectangle(10.0, -10.0, w, h)); // col 1
+        add(ofRectangle(-10, 10.0, w, h)); // col 2
+        add(ofRectangle(-30, 20.0, w, h)); // col 3
+
+        eye.setup();
+        video.setVerbose(true);
+        video.setup(imgWidth, imgHeight);
+        colorImg.allocate(imgWidth, imgHeight);
+        grayImage.allocate(imgWidth, imgHeight);
+        grayDiff.allocate(imgWidth, imgHeight);
+        ofEnableLighting();
+        ofEnableSeparateSpecularLight();
+        light.enable();
+        light.setAmbientColor(ofColor::paleVioletRed);
+        light.setAreaLight(ofGetWidth(), ofGetHeight());
+        ofEnableSmoothing();
+
+    }
+    void update() {
+        video.update();
+        eye.update();
+        if (video.isFrameNew()) { // && (ofGetFrameNum() & 1) to slow things down
+            // clear less often
+            colorImg.setFromPixels(video.getPixels());
+            grayImage = colorImg; // convert our color image to a grayscale image
+            //grayImage.blurHeavily();
+            if (backgroundImage.bAllocated) {
+                grayDiff.absDiff(backgroundImage, grayImage);
+            }
+            backgroundImage = grayImage; // only track new items -- so eye moves when objects move
+            grayDiff.threshold(50); // turn any pixels above 30 white, and below 100 black
+            contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true);
+        }
+    }
+    void draw(const ofxCvBlob& blob){
+        ofPolyline line;
+        //video.draw(video.getWidth(),0,-video.getWidth(),video.getHeight());
+        for (int i = 0; i < blob.nPts; i++) {
+            line.addVertex(ofPoint(imgWidth -blob.pts[i].x, blob.pts[i].y));
+            //ofVertex(blob.pts[i].x, blob.pts[i].y);
+        }
+        line.close();
+        line.scale(cx/imgWidth, cy/imgHeight);
+        line.draw();
+        //ofSetHexColor(0xff0099);
+        //ofDrawRectangle(x + blob.boundingRect.x, y + blob.boundingRect.y, blob.boundingRect.width, blob.boundingRect.height);
+    }
+    void draw() {
+        //if (thresholdImage.bAllocated) {
+            //ofSetColor(ofColor::blue, 20);
+            //thresholdImage.draw(x, y);
+       // }
+        // what does this do? contourFinder.draw();
+        //ofSetColor(ofColor::blue, 20);
+        //grayImage.draw(0, 0);
+        //ofEnableAlphaBlending();
+        ofPushStyle();
+        ofNoFill();
+        for (auto& motion : motionMap){
+            motion.draw(cx / imgWidth, cy / imgHeight);
+        }
+        ofNoFill();
+        ofSetLineWidth(1);// ofRandom(1, 5));
+        light.setAmbientColor(ofColor::paleVioletRed);
+        bool first = true;
+        for (auto& blob : contourFinder.blobs) {
+            if (first) {
+                const MotionData& motion = find(imgWidth - blob.centroid.x, blob.centroid.y);
+                eye.set(motion);
+                motion.draw((cx / imgWidth), cy / imgHeight, true);
+                eye.draw();
+                first = false; // largest blob is first
+            }
+            light.setAmbientColor(ofColor::orangeRed);
+            draw(blob);
+        }
+        if (contourFinder.blobs.size() == 0) {
+            eye.draw();
+        }
+        ofPopStyle();
+    }
+    ofxCvContourFinder contourFinder;
+    ofVideoGrabber video;
+    ofxCvColorImage colorImg;
+    ofxCvGrayscaleImage grayImage, backgroundImage, grayDiff;
+    int imgWidth = cxTracer;// 320; // the motion image
+    int imgHeight = cyTracer;//240;
+    ManagedEye eye;
+    ofLight light;
+
+};
+
+// get all logic into one place
+class ElectricCat  {
+public:
+    void setup() {
+        ofSetColor(ofColor::white);
+        ofSetBackgroundColor(ofColor::black);
+        ofSetFrameRate(30);
+        countours.setup();
+        //cam.setPosition(0, 0, 0); // keep eye behind glasses
+        ofSetVerticalSync(true);
+        // Set the video grabber to the ofxPS3EyeGrabber.
+    }
+    void update() {
+        countours.update();
+    }
+    void draw() {
+        ofEnableDepthTest();
+       //cam.begin();
+        // do funky stuff with Tom's art now and then
+       countours.draw();
+       //cam.end();
+        // put on the sun shades
+    }
+    Contours countours;
+    Camera cam;
+
+};
+
+class ofApp : public ofBaseApp {
+
+public:
+    ElectricCat art;
+    void setup() {
+        art.setup();
+    }
+
+    void update() {
+        art.update();
+    }
+
+    void draw() {
+        art.draw();
+    }
+
+    void keyPressed(int key) {
+        if (key == 'k') {
+            ofToggleFullscreen();
+        }
+        else if (key == 'f') {
+            ofToggleFullscreen();
+        }
+    }
+};
+
+
+/* reference
+void rotateY(ofImage &image, float degrees, int x, int y) {
+ofPushMatrix();
+ofTranslate(image.getWidth() / 2, image.getHeight() / 2, 0);//move pivot to centre
+ofRotateYDeg(degrees);
+ofPushMatrix();
+ofTranslate(-image.getWidth() / 2, -image.getHeight() / 2, 0);//move back by the centre offset
+image.draw(x, y);
+ofPopMatrix();
+ofPopMatrix();
+}
+
+*/
+            ofNoFill();
+        }
+        ofDrawRectangle(rectToScale.x*scaleX, rectToScale.y*scaleY, rectToScale.width, rectToScale.height);
+    }
+    bool found(int x, int y) {
+        return rect.inside(x, y);
+    }
+    glm::vec2 rotation;
+private:
+    ofRectangle rect; // target
+};
+class Art : public ofImage {
+public:
+};
+//
+class ManagedEye : public ofImage {
+public:
+    MotionData data;
+    struct Range {
         int step, end;
     };
     struct Ranges {
