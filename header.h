@@ -2,15 +2,90 @@
 #include <deque>
 #include "ofMain.h"
 #include "ofxOpenCv.h"
+#include "ofxMaxim.h"
 
 // add this in, some of times paitinghs and then the interaction 
 //https://github.com/bakercp/ofxIpVideoGrabber
 
 const int cx = 3840; // screen size
 const int cy = 2160;
-
 const int cxTracer = 640;
 const int cyTracer = 480;
+
+class Sound {
+public:
+    float freq;
+    int r = true;//right
+
+    ofxMaxiOsc myOscill, myCounter, mySwitchableOsc;
+    ofxMaxiFilter myFilter;
+    maxiEnv myEnvelope;
+    int CurrentCount;
+    double myOscOutput, myCurrentVolume, myFilteredOutput;
+    double  outputs[2];
+    int		bufferSize;
+    int		sampleRate;
+    ofSoundStream soundStream;
+    vector <float> lAudio;
+    vector <float> rAudio;
+    double sample;
+
+    void setup(ofBaseApp * appPtr) {
+        sampleRate = 44100; /* Sampling Rate */
+        bufferSize = 512; /* Buffer Size. you have to fill this buffer with sound using the for loop in the audioOut method */
+        ofxMaxiSettings::setup(sampleRate, 2, bufferSize);
+        myEnvelope.setAttack(11);
+        myEnvelope.setDecay(100);  // Needs to be at least 1
+        myEnvelope.setSustain(1);
+        myEnvelope.setRelease(1000);
+        freq = 10;
+        ofSoundStreamSetup(2, 2, appPtr, sampleRate, bufferSize, 4); /* this has to happen at the end of setup - it switches on the DAC */
+    }
+    void update() {
+        freq += 20;
+        if (freq > 3000) {
+            freq = 10;
+        }
+
+        r = !r;
+    }
+    float audioOut(int i) {
+            myCurrentVolume = myEnvelope.adsr(1., myEnvelope.trigger);
+
+            CurrentCount = myCounter.phasor(1, 1, 9);//phasor can take three arguments; frequency, start value and end value.
+
+                                                     // You'll notice that these 'if' statements don't require curly braces "{}".
+                                                     // This is because there is only one outcome if the statement is true.
+
+            if (CurrentCount == 1) myEnvelope.trigger = 1; //trigger the envelope
+
+            else myEnvelope.trigger = 0;//release the envelope to make it fade out only if it's been triggered
+
+            if (r) {
+                if (freq > 1000) {
+                    myOscOutput = mySwitchableOsc.sinewave(freq);
+                }
+                else {
+                    myOscOutput = mySwitchableOsc.pulse(freq, 0.2);
+                }
+            }
+            else {
+                if (freq > 1000) {
+                    myOscOutput = mySwitchableOsc.triangle(freq);
+                }
+                else {
+                    myOscOutput = mySwitchableOsc.saw(freq);
+                }
+
+            }
+
+            // Below, the oscilator signals are being passed through a low pass filter.
+            // The middle input is the filter cutoff. It is being controlled by the envelope.
+            // Notice that the envelope is being amplified so that it scales between 0 and 1000.
+            // The last input is the resonance.
+            return myFilter.lores(myOscOutput, myCurrentVolume * 1000, 10);
+        }
+};
 
 //3,840 by 2,160 ir 1024 by 768
 class Camera : public ofEasyCam {
@@ -344,6 +419,8 @@ public:
     }
     void update() {
         countours.update();
+        sound.update();
+
     }
     void draw() {
         ofEnableDepthTest();
@@ -352,6 +429,7 @@ public:
         // put on the sun shades
     }
     Contours countours;
+    Sound sound;
 
 };
 
@@ -359,7 +437,9 @@ class ofApp : public ofBaseApp {
 
 public:
     ElectricCat art;
+
     void setup() {
+        art.sound.setup(this);
         art.setup();
     }
 
@@ -369,6 +449,13 @@ public:
 
     void draw() {
         art.draw();
+    }
+    void audioOut(float * output, int bufferSize, int nChannels) {
+        for (int i = 0; i < bufferSize; i++) {
+            float data = art.sound.audioOut(i);
+            output[i*nChannels] = data;
+            output[i*nChannels + 1] = data;
+        }
     }
 
     void keyPressed(int key) {

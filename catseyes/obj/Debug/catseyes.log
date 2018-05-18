@@ -1,0 +1,18 @@
+﻿  main.cpp
+  ofApp.cpp
+c:\of_v0.10.0_vs2017_release\addons\ofxmaxim\libs\maximilian.h(370): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details. (compiling source file src\main.cpp)
+  c:\program files (x86)\windows kits\10\include\10.0.17134.0\ucrt\stdio.h(1774): note: see declaration of 'sprintf' (compiling source file src\main.cpp)
+c:\of_v0.10.0_vs2017_release\addons\ofxmaxim\libs\maximilian.h(370): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details. (compiling source file src\ofApp.cpp)
+  c:\program files (x86)\windows kits\10\include\10.0.17134.0\ucrt\stdio.h(1774): note: see declaration of 'sprintf' (compiling source file src\ofApp.cpp)
+c:\of_v0.10.0_vs2017_release\apps\myapps\catseyes\header.h(42): warning C4996: 'ofSoundStreamSetup': Use an ofSoundStreamSettings object instead of directly passing the parameters (compiling source file src\ofApp.cpp)
+  c:\of_v0.10.0_vs2017_release\libs\openframeworks\sound\ofsoundstream.h(43): note: see declaration of 'ofSoundStreamSetup' (compiling source file src\ofApp.cpp)
+c:\of_v0.10.0_vs2017_release\apps\myapps\catseyes\header.h(42): warning C4996: 'ofSoundStreamSetup': Use an ofSoundStreamSettings object instead of directly passing the parameters (compiling source file src\main.cpp)
+  c:\of_v0.10.0_vs2017_release\libs\openframeworks\sound\ofsoundstream.h(43): note: see declaration of 'ofSoundStreamSetup' (compiling source file src\main.cpp)
+  catseyes.vcxproj -> C:\of_v0.10.0_vs2017_release\apps\myApps\catseyes\catseyes\bin\catseyes_debug.exe
+  
+  	                   2	C:\of_v0.10.0_vs2017_release\libs\fmodex\lib\vs\Win32\
+  	  *EXTRA File 		 5647872	C:\of_v0.10.0_vs2017_release\apps\myApps\catseyes\catseyes\bin\FreeImage.dll
+  
+  	                   1	C:\of_v0.10.0_vs2017_release\libs\FreeImage\lib\vs\Win32\
+  	  *EXTRA File 		 1266176	C:\of_v0.10.0_vs2017_release\apps\myApps\catseyes\catseyes\bin\fmodex.dll
+  	  *EXTRA File 		 1312768	C:\of_v0.10.0_vs2017_release\apps\myApps\catseyes\catseyes\bin\fmodexL.dll
