@@ -7,29 +7,11 @@
     <ClCompile Include="src\main.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\fft.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
+    <ClCompile Include="src\main.cpp">
+      <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\maxiAtoms.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\maxiBark.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\maxiFFT.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\maxiGrains.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\maxiMFCC.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\maximilian.cpp">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\addons\ofxMaxim\libs\stb_vorbis.c">
-      <Filter>addons\ofxMaxim\libs</Filter>
+    <ClCompile Include="src\ofApp.cpp">
+      <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\..\addons\ofxOpenCv\src\ofxCvColorImage.cpp">
       <Filter>addons\ofxOpenCv\src</Filter>
@@ -59,15 +41,6 @@
     </Filter>
     <Filter Include="addons">
       <UniqueIdentifier>{71834F65-F3A9-211E-73B8-DC85}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="addons\ofxMaxim">
-      <UniqueIdentifier>{BB11635E-CB83-2754-C30E-4383}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="addons\ofxMaxim\src">
-      <UniqueIdentifier>{A5FE3CBF-BB0C-BCAC-6243-EC28}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="addons\ofxMaxim\libs">
-      <UniqueIdentifier>{093ACE73-2DC8-CF52-36D5-72AA}</UniqueIdentifier>
     </Filter>
     <Filter Include="addons\ofxOpenCv">
       <UniqueIdentifier>{FFA81411-43B9-BD99-75AF-1DC3}</UniqueIdentifier>
@@ -224,35 +197,8 @@
     <ClInclude Include="src\ofApp.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\src\ofxMaxim.h">
-      <Filter>addons\ofxMaxim\src</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\fft.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\maxiAtoms.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\maxiBark.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\maxiFFT.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\maxiGrains.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\maxiMFCC.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\maximilian.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\sineTable.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\addons\ofxMaxim\libs\stb_vorbis.h">
-      <Filter>addons\ofxMaxim\libs</Filter>
+    <ClInclude Include="src\ofApp.h">
+      <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\addons\ofxOpenCv\src\ofxCvBlob.h">
       <Filter>addons\ofxOpenCv\src</Filter>

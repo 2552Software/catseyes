@@ -2,7 +2,6 @@
 #include <deque>
 #include "ofMain.h"
 #include "ofxOpenCv.h"
-#include "ofxMaxim.h"
 
 // add this in, some of times paitinghs and then the interaction 
 //https://github.com/bakercp/ofxIpVideoGrabber
@@ -11,81 +10,6 @@ const int cx = 3840; // screen size
 const int cy = 2160;
 const int cxTracer = 640;
 const int cyTracer = 480;
-
-class Sound {
-public:
-    float freq;
-    int r = true;//right
-
-    ofxMaxiOsc myOscill, myCounter, mySwitchableOsc;
-    ofxMaxiFilter myFilter;
-    maxiEnv myEnvelope;
-    int CurrentCount;
-    double myOscOutput, myCurrentVolume, myFilteredOutput;
-    double  outputs[2];
-    int		bufferSize;
-    int		sampleRate;
-    ofSoundStream soundStream;
-    vector <float> lAudio;
-    vector <float> rAudio;
-    double sample;
-
-    void setup(ofBaseApp * appPtr) {
-        sampleRate = 44100; /* Sampling Rate */
-        bufferSize = 512; /* Buffer Size. you have to fill this buffer with sound using the for loop in the audioOut method */
-        ofxMaxiSettings::setup(sampleRate, 2, bufferSize);
-        myEnvelope.setAttack(11);
-        myEnvelope.setDecay(100);  // Needs to be at least 1
-        myEnvelope.setSustain(1);
-        myEnvelope.setRelease(1000);
-        freq = 10;
-        ofSoundStreamSetup(2, 2, appPtr, sampleRate, bufferSize, 4); /* this has to happen at the end of setup - it switches on the DAC */
-    }
-    void update() {
-        freq += 20;
-        if (freq > 3000) {
-            freq = 10;
-        }
-
-        r = !r;
-    }
-    float audioOut(int i) {
-            myCurrentVolume = myEnvelope.adsr(1., myEnvelope.trigger);
-
-            CurrentCount = myCounter.phasor(1, 1, 9);//phasor can take three arguments; frequency, start value and end value.
-
-                                                     // You'll notice that these 'if' statements don't require curly braces "{}".
-                                                     // This is because there is only one outcome if the statement is true.
-
-            if (CurrentCount == 1) myEnvelope.trigger = 1; //trigger the envelope
-
-            else myEnvelope.trigger = 0;//release the envelope to make it fade out only if it's been triggered
-
-            if (r) {
-                if (freq > 1000) {
-                    myOscOutput = mySwitchableOsc.sinewave(freq);
-                }
-                else {
-                    myOscOutput = mySwitchableOsc.pulse(freq, 0.2);
-                }
-            }
-            else {
-                if (freq > 1000) {
-                    myOscOutput = mySwitchableOsc.triangle(freq);
-                }
-                else {
-                    myOscOutput = mySwitchableOsc.saw(freq);
-                }
-
-            }
-
-            // Below, the oscilator signals are being passed through a low pass filter.
-            // The middle input is the filter cutoff. It is being controlled by the envelope.
-            // Notice that the envelope is being amplified so that it scales between 0 and 1000.
-            // The last input is the resonance.
-            return myFilter.lores(myOscOutput, myCurrentVolume * 1000, 10);
-        }
-};
 
 //3,840 by 2,160 ir 1024 by 768
 class Camera : public ofEasyCam {
@@ -121,9 +45,10 @@ public:
 class MotionData {
 public:
     MotionData() {}
-    MotionData(glm::vec2&r, ofRectangle &rec, int index=0) {
+    MotionData(glm::vec2&r, ofRectangle &rec, float f, int index=0) {
         rotation = r;
         rect = rec;
+        freq = f;
         this->index = index;
     }
     void draw(int scaleX, int scaleY, bool fill = false) const {
@@ -143,6 +68,7 @@ public:
     glm::vec2 rotation;
     ofRectangle rect; // target
     int index = 0;
+    float freq = 0.0;
 };
 
 class myBlob : public ofxCvBlob {
@@ -237,14 +163,14 @@ public:
         return motionMap[0];// default to empty data, no movement needed
     }
     //v.x - motion x, v.y motion y, v.w - width, v.z - length
-    void add(const ofRectangle& grid, int index) { // private
+    void add(const ofRectangle& grid, float freq, int index) { // private
         float w = grid.getWidth();
         float h = grid.getHeight();
         float row = motionMap.size()/4;
-        motionMap.push_back(MotionData(glm::vec2(grid.getX(), grid.getY()), ofRectangle(w*0, row*h, w, h), index)); //ex: row 1, col 1
-        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 5.0, grid.getY()), ofRectangle(w*1, row*h, w, h), index + 1));// row 1, col 2
-        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 7.0, grid.getY()), ofRectangle(w * 2, row*h, w, h), index + 2)), index+2;// row 1, col 3
-        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 9.0, grid.getY()), ofRectangle(w * 3, row*h, w, h), index + 3));// row 1, col 4
+        motionMap.push_back(MotionData(glm::vec2(grid.getX(), grid.getY()), ofRectangle(w*0, row*h, w, h), freq - 250.0, index)); //ex: row 1, col 1
+        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 5.0, grid.getY()), ofRectangle(w*1, row*h, w, h), freq - 100.0, index + 1));// row 1, col 2
+        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 7.0, grid.getY()), ofRectangle(w * 2, row*h, w, h), freq, index + 2)), index+2;// row 1, col 3
+        motionMap.push_back(MotionData(glm::vec2(grid.getX() + 9.0, grid.getY()), ofRectangle(w * 3, row*h, w, h), freq+1000, index + 3));// row 1, col 4
     }
     void setup() {
         //video.setVerbose(true);
@@ -258,10 +184,10 @@ public:
         float w = imgWidth / 4;
         float h = imgHeight / 4;
         // 0-360
-        add(ofRectangle(-12.0, 10.0, w, h), 0); // col 0, % of 180
-        add(ofRectangle(-10.0, 5.0, w, h), 4); // col 1
-        add(ofRectangle(10, -7.0, w, h), 8); // col 2
-        add(ofRectangle(12, -10.0, w, h),12); // col 3
+        add(ofRectangle(-12.0, 10.0, w, h), 250, 0); // col 0, % of 180
+        add(ofRectangle(-10.0, 5.0, w, h), 500, 4); // col 1
+        add(ofRectangle(10, -7.0, w, h), 1000, 8); // col 2
+        add(ofRectangle(12, -10.0, w, h), 2000,12); // col 3
 
         eye.setup();
         art.push_back(ArtImage(cx / 4, cy / 4, "tom1.jpg"));
@@ -356,6 +282,7 @@ public:
                 //motion.draw((cx / imgWidth), cy / imgHeight, true);
                 artSelected.push_back(art[data.index]);
                 first = false; // largest blob is first
+                freq = data.freq; // give it more range, left and right etc once working
             }
             myBlob b;
             b.set(blob);
@@ -364,6 +291,7 @@ public:
         if (contourFinder.blobs.size() == 0) {
             light.setAmbientColor(ofColor::orangeRed);
             eye.draw();
+            freq = 0;
             //ofSetColor(ofColor(255, 215, 0, 255));
         }
         light.setAmbientColor(ofColor::paleGoldenRod);
@@ -404,6 +332,7 @@ public:
     std::vector<myBlob> myBlobs;
     std::vector<ArtImage> art;
     std::vector<ArtImage> artSelected;
+    float freq = 1000;
 };
 
 // get all logic into one place
@@ -415,12 +344,12 @@ public:
         ofSetFrameRate(30);
         countours.setup();
         ofSetVerticalSync(true);
+        ofSoundStreamSetup(1, 0); // mono output
+
         // Set the video grabber to the ofxPS3EyeGrabber.
     }
     void update() {
         countours.update();
-        sound.update();
-
     }
     void draw() {
         ofEnableDepthTest();
@@ -429,7 +358,6 @@ public:
         // put on the sun shades
     }
     Contours countours;
-    Sound sound;
 
 };
 
@@ -438,9 +366,43 @@ class ofApp : public ofBaseApp {
 public:
     ElectricCat art;
 
+    ofSoundStream soundStream;
+
+    float 	pan;
+    int		sampleRate;
+    bool 	bNoise;
+    float 	volume;
+
+    vector <float> lAudio;
+    vector <float> rAudio;
+
+    //------------------- for the simple sine wave synthesis
+    float 	targetFrequency;
+    float 	phase;
+    float 	phaseAdder;
+    float 	phaseAdderTarget;
     void setup() {
-        art.sound.setup(this);
         art.setup();
+        int bufferSize = 512;
+        sampleRate = 44100;
+        phase = 0;
+        phaseAdder = 0.0f;
+        phaseAdderTarget = 0.0f;
+        volume = 0.1f;
+        bNoise = false;
+
+        lAudio.assign(bufferSize, 0.0);
+        rAudio.assign(bufferSize, 0.0);
+
+        soundStream.printDeviceList();
+
+        ofSoundStreamSettings settings;
+        settings.setOutListener(this);
+        settings.sampleRate = sampleRate;
+        settings.numOutputChannels = 2;
+        settings.numInputChannels = 0;
+        settings.bufferSize = bufferSize;
+        soundStream.setup(settings);
     }
 
     void update() {
@@ -450,14 +412,6 @@ public:
     void draw() {
         art.draw();
     }
-    void audioOut(float * output, int bufferSize, int nChannels) {
-        for (int i = 0; i < bufferSize; i++) {
-            float data = art.sound.audioOut(i);
-            output[i*nChannels] = data;
-            output[i*nChannels + 1] = data;
-        }
-    }
-
     void keyPressed(int key) {
         if (key == 'k') {
             ofToggleFullscreen();
@@ -465,7 +419,84 @@ public:
         else if (key == 'f') {
             ofToggleFullscreen();
         }
+        else if (key == 's') {
+            soundStream.start();
+        }
+        else if (key == 'e') {
+            soundStream.stop();
+        }
+        else if (key == '-' || key == '_') {
+            volume -= 0.05;
+            volume = MAX(volume, 0);
+        }
+        else if (key == '+' || key == '=') {
+            volume += 0.05;
+            volume = MIN(volume, 1);
+        }
+
     }
+    void mouseMoved(int x, int y) {
+        int width = ofGetWidth();
+        pan = (float)x / (float)width;
+        float height = (float)ofGetHeight();
+        float heightPct = ((height - y) / height);
+        targetFrequency = 2000.0f * heightPct;
+        phaseAdderTarget = (targetFrequency / (float)sampleRate) * TWO_PI;
+    }
+    void audioOut(ofSoundBuffer & buffer) {
+        //pan = 0.5f;
+        float leftScale = 1 - pan;
+        float rightScale = pan;
+        if (art.countours.freq) {
+            phaseAdderTarget = ((art.countours.freq*10) / (float)sampleRate) * TWO_PI;
+        }
+        else {
+            return;
+        }
+
+        // sin (n) seems to have trouble when n is very large, so we
+        // keep phase in the range of 0-TWO_PI like this:
+        while (phase > TWO_PI) {
+            phase -= TWO_PI;
+        }
+
+        if (bNoise == true) {
+            // ---------------------- noise --------------
+            for (size_t i = 0; i < buffer.getNumFrames(); i++) {
+                lAudio[i] = buffer[i*buffer.getNumChannels()] = ofRandom(0, 1) * volume * leftScale;
+               // rAudio[i] = buffer[i*buffer.getNumChannels() + 1] = ofRandom(0, 1) * volume * rightScale;
+            }
+        }
+        else {
+            phaseAdder = 0.95f * phaseAdder + 0.05f * phaseAdderTarget;
+            for (size_t i = 0; i < buffer.getNumFrames(); i++) {
+                phase += phaseAdder;
+                float sample = sin(phase);
+                lAudio[i] = buffer[i*buffer.getNumChannels()] = sample * volume * leftScale;
+               // rAudio[i] = buffer[i*buffer.getNumChannels() + 1] = sample * volume * rightScale;
+            }
+        }
+
+    }
+
+    //--------------------------------------------------------------
+    void mouseDragged(int x, int y, int button) {
+        int width = ofGetWidth();
+        pan = (float)x / (float)width;
+    }
+
+    //--------------------------------------------------------------
+    void mousePressed(int x, int y, int button) {
+        bNoise = true;
+    }
+
+
+    //--------------------------------------------------------------
+    void mouseReleased(int x, int y, int button) {
+        bNoise = false;
+    }
+
+
 };
 
 
