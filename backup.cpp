@@ -1,5 +1,43 @@
 #include "ofApp.h"
-//glm::vec3
+
+
+#pragma once
+
+#include "ofMain.h"
+
+class ofApp : public ofBaseApp{
+
+	public:
+        ofLight	light;
+        ofEasyCam cam;
+
+		void setup();
+		void update();
+		void draw();
+
+		void keyPressed(int key);
+		void keyReleased(int key);
+		void mouseMoved(int x, int y );
+		void mouseDragged(int x, int y, int button);
+		void mousePressed(int x, int y, int button);
+		void mouseReleased(int x, int y, int button);
+		void mouseEntered(int x, int y);
+		void mouseExited(int x, int y);
+		void windowResized(int w, int h);
+		void dragEvent(ofDragInfo dragInfo);
+		void gotMessage(ofMessage msg);
+
+        std::vector<glm::vec3> Movements;
+        std::vector<int> eyeType;
+        std::vector<ofImage> eyes;
+
+private:
+    void setPupil(float r, int type = 0);
+    void bindEye();
+    void unBindEye();
+		
+};
+
 //--------------------------------------------------------------
 void ofApp::setup(){
     ofBackground(ofColor::black);
