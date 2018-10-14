@@ -39,6 +39,9 @@ private:
 };
 
 //--------------------------------------------------------------
+#include "ofApp.h"
+//
+//--------------------------------------------------------------
 void ofApp::setup(){
     ofBackground(ofColor::black);
     ofEnableLighting();
@@ -49,7 +52,9 @@ void ofApp::setup(){
     //ofDisableAlphaBlending();
     cam.setDistance(700);
     light.enable();
-    eye.load("orange3a.jpg");
+    ofImage eye;
+    eyes.push_back(eye);
+    eyes[0].load("orange3a.jpg");
     light.setup();
     light.setDiffuseColor(ofColor::white);
     light.setSpecularColor(ofColor::white);
@@ -60,7 +65,7 @@ void ofApp::setup(){
 
 //--------------------------------------------------------------
 void ofApp::update(){
-    eye.update();
+    eyes[0].update();
 }
 
 //--------------------------------------------------------------
@@ -82,10 +87,10 @@ void ofApp::draw(){
     ofPopMatrix();
 }
 void ofApp::unBindEye() {
-    eye.getTexture().unbind(); // allow for various eyes
+    eyes[0].getTexture().unbind(); // allow for various eyes
 }
 void ofApp::bindEye() {
-    eye.getTexture().bind(); // allow for various eyes
+    eyes[0].getTexture().bind(); // allow for various eyes
 }
 void ofApp::setPupil(float r, int type) {
     // have different types, sizes, colors etc
