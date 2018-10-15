@@ -5,16 +5,54 @@
 #include "ofxAnimatableOfPoint.h"
 #include "ofxAnimatableOfColor.h"
 
+class ofxAnimatableQueue2552 {
+
+public:
+    ofxAnimatableQueue2552() {
+        clearQueue();
+    }
+
+    struct EventArg {
+        ofxAnimatableQueue2552* who;
+    };
+
+    void setInitialValue(const ofxAnimatableOfPoint val); //initial value of the timeline
+    void addTransition(const ofxAnimatableOfPoint targetValue);
+    void clearQueue(); //removes all transitions
+
+    ofxAnimatableOfPoint getCurrentValue();
+
+    void startPlaying(); //resets playhead to 0
+    void pausePlayback(); //just stops updating
+    void resumePlayback(); //just resumes updating
+    bool isPlaying() { return playing; }
+
+
+    void update(float dt);
+
+    ofEvent<ofxAnimatableQueue2552::EventArg> eventQueueDone;
+
+protected:
+
+    std::vector<ofxAnimatableOfPoint> animSteps;
+    int currentStep = 0;
+    bool playing = false;
+
+    ofxAnimatableOfPoint anim;
+
+};
+
 class ofApp : public ofBaseApp{
 
 	public:
         const float fps = 30.0f;
         ofLight	light;
         ofEasyCam cam;
-        ofxAnimatableOfPoint eyeMotion;
+        ofxAnimatableOfPoint eyeMotion; // add some color and eye size at some point, also a crazy eyes
         std::vector<int> eyeType;
         std::vector<ofImage> eyes;
-
+        ofxAnimatableQueue2552 queue;
+        void onAnimQueueDone(ofxAnimatableQueue2552::EventArg&);
 		void setup();
 		void update();
 		void draw();
