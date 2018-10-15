@@ -1,15 +1,19 @@
-#include "ofApp.h"
-
-
 #pragma once
 
 #include "ofMain.h"
+#include "ofxAnimatableFloat.h"
+#include "ofxAnimatableOfPoint.h"
+#include "ofxAnimatableOfColor.h"
 
 class ofApp : public ofBaseApp{
 
 	public:
+        const float fps = 30.0f;
         ofLight	light;
         ofEasyCam cam;
+        ofxAnimatableOfPoint eyeMotion;
+        std::vector<int> eyeType;
+        std::vector<ofImage> eyes;
 
 		void setup();
 		void update();
@@ -27,16 +31,12 @@ class ofApp : public ofBaseApp{
 		void dragEvent(ofDragInfo dragInfo);
 		void gotMessage(ofMessage msg);
 
-        std::vector<glm::vec3> Movements;
-        std::vector<int> eyeType;
-        std::vector<ofImage> eyes;
-
 private:
     void setPupil(float r, int type = 0);
     void bindEye();
     void unBindEye();
-		
 };
+
 
 //--------------------------------------------------------------
 #include "ofApp.h"
