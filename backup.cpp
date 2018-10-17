@@ -4,55 +4,92 @@
 #include "ofxAnimatableFloat.h"
 #include "ofxAnimatableOfPoint.h"
 #include "ofxAnimatableOfColor.h"
+#include "ofxAnimatableQueue.h"
 
-class ofxAnimatableQueue2552 {
+class ofxAnimatableQueueOfPoint {
 
 public:
-    ofxAnimatableQueue2552() {
+    ofxAnimatableQueueOfPoint() {
         clearQueue();
     }
 
     struct EventArg {
-        ofxAnimatableQueue2552* who;
+        ofxAnimatableQueueOfPoint* who;
     };
 
-    void setInitialValue(const ofxAnimatableOfPoint val); //initial value of the timeline
-    void addTransition(const ofxAnimatableOfPoint targetValue);
-    void clearQueue(); //removes all transitions
+    void ofxAnimatableQueueOfPoint::setInitialValue(const ofxAnimatableOfPoint val) {
+        anim = val;
+    }
 
-    ofxAnimatableOfPoint getCurrentValue();
+    void ofxAnimatableQueueOfPoint::addTransition(const ofxAnimatableOfPoint targetValue) {
+        animSteps.push_back(targetValue);
+    }
 
-    void startPlaying(); //resets playhead to 0
-    void pausePlayback(); //just stops updating
-    void resumePlayback(); //just resumes updating
-    bool isPlaying() { return playing; }
+    void ofxAnimatableQueueOfPoint::clearQueue() {
+        animSteps.clear();
+    }
+    ofxAnimatableOfPoint ofxAnimatableQueueOfPoint::getCurrentValue() {
+        return anim;
+    }
 
+    void ofxAnimatableQueueOfPoint::update(float dt) {
 
-    void update(float dt);
+        if (playing) {
 
-    ofEvent<ofxAnimatableQueue2552::EventArg> eventQueueDone;
+            anim.update(dt);
+
+            if (anim.hasFinishedAnimating()) {
+                if (currentStep < animSteps.size()) {
+                    //animSteps.erase(animSteps.begin());
+                    anim = animSteps[currentStep];
+                    currentStep++;
+                }
+                else {
+                    playing = false;
+                    EventArg arg = { this };
+                    ofNotifyEvent(eventQueueDone, arg);
+                }
+            }
+        }
+    }
+
+    ofEvent<ofxAnimatableQueueOfPoint::EventArg> eventQueueDone;
+
+    void startPlaying() {
+        currentStep = 0;
+        playing = true;
+    }
+
+    void pausePlayback() {
+        playing = false;
+    }
+
+    void resumePlayback() {
+        playing = true;
+    }
 
 protected:
-
-    std::vector<ofxAnimatableOfPoint> animSteps;
-    int currentStep = 0;
+    size_t currentStep = 0;
     bool playing = false;
-
+private:
     ofxAnimatableOfPoint anim;
-
+    std::vector<ofxAnimatableOfPoint> animSteps;
 };
+
 
 class ofApp : public ofBaseApp{
 
 	public:
-        const float fps = 30.0f;
+        const float fps = 60.0f;
+        float r;
         ofLight	light;
         ofEasyCam cam;
-        ofxAnimatableOfPoint eyeMotion; // add some color and eye size at some point, also a crazy eyes
-        std::vector<int> eyeType;
+        ofxAnimatableFloat blinkerDown;
+        ofxAnimatableFloat blinkerUp;
         std::vector<ofImage> eyes;
-        ofxAnimatableQueue2552 queue;
-        void onAnimQueueDone(ofxAnimatableQueue2552::EventArg&);
+        ofxAnimatableQueueOfPoint OMD; // Orchestral Manoeuvres in the Dark
+        ofxAnimatableQueue eyesHaveIt;
+        void onAnimQueueDone(ofxAnimatableQueueOfPoint::EventArg&);
 		void setup();
 		void update();
 		void draw();
@@ -70,7 +107,6 @@ class ofApp : public ofBaseApp{
 		void gotMessage(ofMessage msg);
 
 private:
-    void setPupil(float r, int type = 0);
     void bindEye();
     void unBindEye();
 };
@@ -152,56 +188,9 @@ private:
 };
 #include "ofApp.h"
 
-void ofxAnimatableQueue2552::setInitialValue(const ofxAnimatableOfPoint val) {
-    anim = val;
-}
-
-void ofxAnimatableQueue2552::addTransition(const ofxAnimatableOfPoint targetValue) {
-    animSteps.push_back(targetValue);
-}
-
-void ofxAnimatableQueue2552::clearQueue() {
-    animSteps.clear();
-}
-
-void ofxAnimatableQueue2552::update(float dt) {
-
-    if (playing) {
-
-        anim.update(dt);
-
-        if (anim.hasFinishedAnimating()) {
-            if (currentStep < animSteps.size()) {
-                //animSteps.erase(animSteps.begin());
-                anim = animSteps[currentStep];
-                currentStep++;
-            }
-            else {
-                playing = false;
-                EventArg arg = { this };
-                ofNotifyEvent(eventQueueDone, arg);
-            }
-        }
-    }
-}
 
 
-ofxAnimatableOfPoint ofxAnimatableQueue2552::getCurrentValue() {
-    return anim;
-}
 
-void ofxAnimatableQueue2552::startPlaying() {
-    currentStep = 0;
-    playing = true;
-}
-
-void ofxAnimatableQueue2552::pausePlayback() {
-    playing = false;
-}
-
-void ofxAnimatableQueue2552::resumePlayback() {
-    playing = true;
-}
 //
 //--------------------------------------------------------------
 void ofApp::setup(){
@@ -217,17 +206,24 @@ void ofApp::setup(){
     light.enable();
     ofImage eye;
     eyes.push_back(eye);
-    eyes[0].load("orange3a.jpg");
+    eyes[0].load("p1.jpg");
 
     eyes.push_back(eye);
-    eyes[1].load("p1.jpg");
-
+    eyes[1].load("blink.png");
     light.setup();
     light.setDiffuseColor(ofColor::white);
     light.setSpecularColor(ofColor::white);
     light.setAmbientColor(ofColor::beige);
-    light.setAreaLight(ofGetHeight() / 4, ofGetWidth() / 4);
-    light.setPosition(-ofGetWidth() / 2, ofGetHeight(), 200);
+
+    // see size handler too
+    windowResized(0,0);
+
+    blinkerDown.setDuration(1.0);
+    blinkerDown.setRepeatType(LOOP_BACK_AND_FORTH);
+    blinkerDown.setCurve(QUARTIC_EASE_IN);
+    blinkerUp.setDuration(1.0);
+    blinkerUp.setRepeatType(LOOP_BACK_AND_FORTH);
+    blinkerUp.setCurve(QUARTIC_EASE_IN);
 
     ofxAnimatableOfPoint eyeMotion; // add some color and eye size at some point, also a crazy eyes
     eyeMotion.setDuration(0.3);
@@ -255,9 +251,9 @@ void ofApp::setup(){
     pupils.setCurve(QUADRATIC_EASE_OUT);
     pupils.setRepeatTimes(1);
     pupils.animateTo(ofPoint(0, 0, 5));
-    eyesHaveIt.addTransition(pupils);
-    ofAddListener(eyesHaveIt.eventQueueDone, this, &ofApp::onAnimQueueDone);
-    eyesHaveIt.startPlaying();
+    //eyesHaveIt.addTransition(pupils);
+    //ofAddListener(eyesHaveIt.eventQueueDone, this, &ofApp::onAnimQueueDone);
+   // eyesHaveIt.startPlaying();
 }
 
 //--------------------------------------------------------------
@@ -267,10 +263,12 @@ void ofApp::update(){
 
     OMD.update(1.0f / fps);
     eyesHaveIt.update(1.0f / fps);
+    blinkerDown.update(1.0f / fps);
+    blinkerUp.update(1.0f / fps);
 
     // debug helper
     std::stringstream ss;
-    ss << OMD.getCurrentValue().getCurrentPosition();
+    ss << blinkerDown.getCurrentValue();
     ofSetWindowTitle(ss.str());
 
 }
@@ -281,19 +279,26 @@ void ofApp::draw(){
     ofPushMatrix();
     ofPushStyle();
     cam.begin();
+
     bindEye();
     ofSetColor(ofColor::white);
-    float size = std::min(ofGetHeight(), ofGetHeight());
-    float r = size / 3;
     ofPoint p = OMD.getCurrentValue().getCurrentPosition();
-    ofScale(1, 1.3, 1.3); // a bit oblong i figure
+    ofScale(1, 1.2, 1); // a bit oblong i figure
     ofRotateXDeg(180); // hide seam
     //ofRotateXDeg(p.x);
    // ofRotateYDeg(p.y);
    // ofRotateZDeg(p.z);
+    //ofNoFill();
     ofDrawSphere(0, 0, 0, r);
     unBindEye();
-    setPupil(r, 2);
+    // blink?
+    //ofFill();
+    float h = r;
+    float w = r * 2;
+    ofSetColor(ofColor::black); // need to close up and down
+    ofDrawRectangle(-r, -(r + (blinkerDown.getCurrentValue())), -r, w, h);
+    ofDrawRectangle(-r, r-(blinkerUp.getCurrentValue()), -r, w, h);
+
     ofPopStyle();
     ofPopMatrix();
 }
@@ -302,32 +307,9 @@ void ofApp::unBindEye() {
     eyes[0].getTexture().unbind();
 }
 void ofApp::bindEye() {
-    eyes[0].getTexture().bind(); // allow for various eyes
+    eyes[0].getTexture().bind();
 }
-void ofApp::setPupil(float r, int type) {
-    // have different types, sizes, colors etc
-    ofSetColor(0, 254, 0, 220);
-    float r2, z=0.0;
-    //ofScale(1, 2.0, 1.3); // x,y go here
-    ofPoint p = eyesHaveIt.getCurrentValue().getCurrentPosition();
-    r2 = r / p.z;
-    ofDrawCircle(0, 0, r2);
-    switch (type) {
-    case 0:
-       // r2 = r / 4;
-        break;
-    case 1:
-        //r2 = r / 3;
-        break;
-    case 2:
-        //r2 = r / 2.0;
-        break;
-    }
-    //ofDrawSphere(0, 0, r + ((r2*1.7)), abs(r2));
-    //ofDrawSphere(0, 0, r, r2);
-
-}
-void ofApp::onAnimQueueDone(ofxAnimatableQueue2552::EventArg&) {
+void ofApp::onAnimQueueDone(ofxAnimatableQueueOfPoint::EventArg&) {
     OMD.startPlaying(); //loop the animation endlessly
 }
 
@@ -373,7 +355,12 @@ void ofApp::mouseExited(int x, int y){
 
 //--------------------------------------------------------------
 void ofApp::windowResized(int w, int h){
-
+    light.setAreaLight(ofGetHeight() / 4, ofGetWidth() / 4);
+    light.setPosition(-ofGetWidth() / 2, ofGetHeight(), 200);
+    float size = std::min(ofGetHeight(), ofGetHeight());
+    r = std::min(ofGetHeight(), ofGetHeight()) / 3;
+    blinkerUp.animateFromTo(0.0, r);
+    blinkerDown.animateFromTo(r, 0.0);
 }
 
 //--------------------------------------------------------------
@@ -385,5 +372,6 @@ void ofApp::gotMessage(ofMessage msg){
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
 }
+
 
 
