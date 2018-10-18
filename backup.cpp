@@ -1,4 +1,4 @@
-#pragma once
+##pragma once
 
 #include "ofMain.h"
 #include "ofxAnimatableFloat.h"
@@ -76,6 +76,96 @@ private:
     std::vector<ofxAnimatableOfPoint> animSteps;
 };
 
+class ImageAnimator {
+public:
+    void setup() {
+        animator.reset(0.0f);
+        animator.setDuration(5.0f);
+        animator.setRepeatType(LOOP_BACK_AND_FORTH);
+        animator.setCurve(EASE_IN);
+
+        colorAnim.setColor(ofColor::white);
+        colorAnim.setDuration(1.0f);
+        colorAnim.setRepeatType(LOOP_BACK_AND_FORTH);
+        colorAnim.setCurve(LINEAR);
+        colorAnim.animateTo(ofColor::greenYellow);
+    }
+    void startPlaying() {
+       setup();
+       string path = "";
+       ofDirectory dir(path);
+       dir.allowExt("png");
+       dir.allowExt("jpg");
+       dir.listDir();
+       for (size_t i = 0; i < dir.size(); i++) {
+           add(dir.getPath(i));
+       }
+
+       animator.animateTo(images.size()-1); 
+    }
+    void add(const std::string &name) {
+        ofImage image;
+        if (image.load(name)){
+            images.push_back(image);
+        }
+    }
+    void add(ofImage image) {
+        images.push_back(image);
+    }
+    ofImage& getImage() {
+        return images[getIndex()];
+    }
+    int getIndex() {
+        return (int)animator.getCurrentValue();
+    }
+    void update(float f) {
+        animator.update(f);
+        colorAnim.update(f);
+        for (ofImage& image : images) {
+            image.update(); // keep updated
+        }
+    }
+    // allow for various eyes
+    void unbind() {
+        getImage().getTexture().unbind();
+    }
+    void bind() {
+        colorAnim.applyCurrentColor();
+        getImage().getTexture().bind();
+    }
+
+private:
+    std::vector<ofImage> images;
+    ofxAnimatableFloat animator; 
+    ofxAnimatableOfColor colorAnim; // image background color
+};
+
+class MotionGenerator {
+public:
+    void draw() {
+        ofPoint p = queue.getCurrentValue().getCurrentPosition();
+        ofRotateXDeg(p.x);
+        ofRotateYDeg(p.y);
+        ofRotateZDeg(p.z);
+    }
+    void add(const ofPoint& start, const ofPoint& target) {
+        ofxAnimatableOfPoint targetPoint;
+        targetPoint.setPosition(start);
+        targetPoint.animateTo(target);
+        targetPoint.setDuration(1.3);
+        targetPoint.setRepeatType(PLAY_ONCE);
+        targetPoint.setCurve(QUADRATIC_EASE_OUT);
+        queue.addTransition(targetPoint);
+    }
+    void update(float f) {
+        queue.update(f);
+    }
+    void startPlaying() {
+        queue.startPlaying();
+    }
+
+    ofxAnimatableQueueOfPoint queue;
+};
 
 class ofApp : public ofBaseApp{
 
@@ -84,15 +174,16 @@ class ofApp : public ofBaseApp{
         float r;
         ofLight	light;
         ofEasyCam cam;
+        MotionGenerator motion;
+        ImageAnimator eyeAnimator;
         ofxAnimatableFloat blinkerDown;
         ofxAnimatableFloat blinkerUp;
-        std::vector<ofImage> eyes;
-        ofxAnimatableQueueOfPoint OMD; // Orchestral Manoeuvres in the Dark
-        ofxAnimatableQueue eyesHaveIt;
-        void onAnimQueueDone(ofxAnimatableQueueOfPoint::EventArg&);
 		void setup();
 		void update();
 		void draw();
+        void onAnimQueueDone(ofxAnimatableQueueOfPoint::EventArg&) {
+            motion.startPlaying(); //loop the animation endlessly
+        }
 
 		void keyPressed(int key);
 		void keyReleased(int key);
@@ -107,89 +198,9 @@ class ofApp : public ofBaseApp{
 		void gotMessage(ofMessage msg);
 
 private:
-    void bindEye();
-    void unBindEye();
 };
 
-#pragma once
-
-#include "ofMain.h"
-#include "ofxAnimatableFloat.h"
-#include "ofxAnimatableOfPoint.h"
-#include "ofxAnimatableOfColor.h"
-
-class ofxAnimatableQueue2552 {
-
-public:
-    ofxAnimatableQueue2552() {
-        clearQueue();
-    }
-
-    struct EventArg {
-        ofxAnimatableQueue2552* who;
-    };
-
-    void setInitialValue(const ofxAnimatableOfPoint val); //initial value of the timeline
-    void addTransition(const ofxAnimatableOfPoint targetValue);
-    void clearQueue(); //removes all transitions
-
-    ofxAnimatableOfPoint getCurrentValue();
-
-    void startPlaying(); //resets playhead to 0
-    void pausePlayback(); //just stops updating
-    void resumePlayback(); //just resumes updating
-    bool isPlaying() { return playing; }
-
-    void update(float dt);
-
-    ofEvent<ofxAnimatableQueue2552::EventArg> eventQueueDone;
-
-protected:
-
-private:
-    ofxAnimatableOfPoint anim;
-    std::vector<ofxAnimatableOfPoint> animSteps;
-    size_t currentStep = 0;
-    bool playing = false;
-};
-
-
-class ofApp : public ofBaseApp{
-
-	public:
-        const float fps = 60.0f;
-        ofLight	light;
-        ofEasyCam cam;
-        std::vector<int> eyeType;
-        std::vector<ofImage> eyes;
-        ofxAnimatableQueue2552 OMD; // Orchestral Manoeuvres in the Dark
-        ofxAnimatableQueue2552 eyesHaveIt;
-        void onAnimQueueDone(ofxAnimatableQueue2552::EventArg&);
-		void setup();
-		void update();
-		void draw();
-
-		void keyPressed(int key);
-		void keyReleased(int key);
-		void mouseMoved(int x, int y );
-		void mouseDragged(int x, int y, int button);
-		void mousePressed(int x, int y, int button);
-		void mouseReleased(int x, int y, int button);
-		void mouseEntered(int x, int y);
-		void mouseExited(int x, int y);
-		void windowResized(int w, int h);
-		void dragEvent(ofDragInfo dragInfo);
-		void gotMessage(ofMessage msg);
-
-private:
-    void setPupil(float r, int type = 0);
-    void bindEye();
-    void unBindEye();
-};
 #include "ofApp.h"
-
-
-
 
 //
 //--------------------------------------------------------------
@@ -202,14 +213,11 @@ void ofApp::setup(){
     ofDisableArbTex();
     ofSetSmoothLighting(true);
     //ofDisableAlphaBlending();
-    cam.setDistance(700);
+    cam.setDistance(ofGetWidth()/2);
     light.enable();
-    ofImage eye;
-    eyes.push_back(eye);
-    eyes[0].load("p1.jpg");
 
-    eyes.push_back(eye);
-    eyes[1].load("blink.png");
+    eyeAnimator.startPlaying();
+
     light.setup();
     light.setDiffuseColor(ofColor::white);
     light.setSpecularColor(ofColor::white);
@@ -218,59 +226,32 @@ void ofApp::setup(){
     // see size handler too
     windowResized(0,0);
 
-    blinkerDown.setDuration(1.0);
+    blinkerDown.setDuration(0.5);
     blinkerDown.setRepeatType(LOOP_BACK_AND_FORTH);
     blinkerDown.setCurve(QUARTIC_EASE_IN);
-    blinkerUp.setDuration(1.0);
+
+    blinkerUp.setDuration(0.5);
     blinkerUp.setRepeatType(LOOP_BACK_AND_FORTH);
     blinkerUp.setCurve(QUARTIC_EASE_IN);
 
-    ofxAnimatableOfPoint eyeMotion; // add some color and eye size at some point, also a crazy eyes
-    eyeMotion.setDuration(0.3);
-    eyeMotion.setPosition(ofPoint(0, 0));
-    eyeMotion.setRepeatType(PLAY_N_TIMES);
-    eyeMotion.setCurve(QUADRATIC_EASE_OUT);
-    eyeMotion.setRepeatTimes(20);
-    eyeMotion.animateTo(ofPoint(0, 0, 360.5));
-
     //we want to know when the animation ends
-    ofAddListener(OMD.eventQueueDone, this, &ofApp::onAnimQueueDone);
-
-    OMD.addTransition(eyeMotion);
-    
-    eyeMotion.setPosition(ofPoint(10, 35));
-    eyeMotion.animateTo(ofPoint(15, 90));
-    OMD.addTransition(eyeMotion);
-
-    OMD.startPlaying(); //start the animation
-
-    ofxAnimatableOfPoint pupils;
-    pupils.setDuration(0.3);
-    pupils.setPosition(ofPoint(0, 0, 2));
-    pupils.setRepeatType(PLAY_N_TIMES);
-    pupils.setCurve(QUADRATIC_EASE_OUT);
-    pupils.setRepeatTimes(1);
-    pupils.animateTo(ofPoint(0, 0, 5));
-    //eyesHaveIt.addTransition(pupils);
-    //ofAddListener(eyesHaveIt.eventQueueDone, this, &ofApp::onAnimQueueDone);
-   // eyesHaveIt.startPlaying();
+    ofAddListener(motion.queue.eventQueueDone, this, &ofApp::onAnimQueueDone);
+    motion.add(ofPoint(0.0f, 0.0f), ofPoint(10.0f, 35.0f));
+    motion.add(ofPoint(10.0f, 35.0f), ofPoint(-10.0f, 15.0f));
+    motion.add(ofPoint(10.0f, 15.0f), ofPoint(0.0f, 0.0f));
+    motion.startPlaying(); //start the animation
 }
 
 //--------------------------------------------------------------
 void ofApp::update(){
-    eyes[0].update();
-    eyes[1].update();
-
-    OMD.update(1.0f / fps);
-    eyesHaveIt.update(1.0f / fps);
+    motion.update(1.0f / fps);
+    eyeAnimator.update(1.0f / fps);
     blinkerDown.update(1.0f / fps);
     blinkerUp.update(1.0f / fps);
-
     // debug helper
     std::stringstream ss;
-    ss << blinkerDown.getCurrentValue();
+    ss << eyeAnimator.getIndex();
     ofSetWindowTitle(ss.str());
-
 }
 
 //--------------------------------------------------------------
@@ -280,37 +261,22 @@ void ofApp::draw(){
     ofPushStyle();
     cam.begin();
 
-    bindEye();
-    ofSetColor(ofColor::white);
-    ofPoint p = OMD.getCurrentValue().getCurrentPosition();
+    eyeAnimator.bind();
     ofScale(1, 1.2, 1); // a bit oblong i figure
     ofRotateXDeg(180); // hide seam
-    //ofRotateXDeg(p.x);
-   // ofRotateYDeg(p.y);
-   // ofRotateZDeg(p.z);
-    //ofNoFill();
+    motion.draw();
     ofDrawSphere(0, 0, 0, r);
-    unBindEye();
+    eyeAnimator.unbind();
+    cam.end();
     // blink?
     //ofFill();
-    float h = r;
-    float w = r * 2;
+    float h = r * 2;
     ofSetColor(ofColor::black); // need to close up and down
-    ofDrawRectangle(-r, -(r + (blinkerDown.getCurrentValue())), -r, w, h);
-    ofDrawRectangle(-r, r-(blinkerUp.getCurrentValue()), -r, w, h);
+    ofDrawRectangle(-ofGetWidth() / 2, -(h+blinkerDown.getCurrentValue()), -r, ofGetWidth(), h);
+    ofDrawRectangle(-ofGetWidth() / 2, blinkerUp.getCurrentValue(), -r, ofGetWidth(), h);
 
     ofPopStyle();
     ofPopMatrix();
-}
-// allow for various eyes
-void ofApp::unBindEye() {
-    eyes[0].getTexture().unbind();
-}
-void ofApp::bindEye() {
-    eyes[0].getTexture().bind();
-}
-void ofApp::onAnimQueueDone(ofxAnimatableQueueOfPoint::EventArg&) {
-    OMD.startPlaying(); //loop the animation endlessly
 }
 
 //--------------------------------------------------------------
@@ -355,12 +321,13 @@ void ofApp::mouseExited(int x, int y){
 
 //--------------------------------------------------------------
 void ofApp::windowResized(int w, int h){
+    cam.setDistance(ofGetWidth() / 2);
     light.setAreaLight(ofGetHeight() / 4, ofGetWidth() / 4);
     light.setPosition(-ofGetWidth() / 2, ofGetHeight(), 200);
     float size = std::min(ofGetHeight(), ofGetHeight());
     r = std::min(ofGetHeight(), ofGetHeight()) / 3;
-    blinkerUp.animateFromTo(0.0, r);
-    blinkerDown.animateFromTo(r, 0.0);
+    blinkerUp.animateFromTo(std::min(ofGetHeight(), ofGetHeight()) / 2, 0.0);
+    blinkerDown.animateFromTo(std::min(ofGetHeight(), ofGetHeight())/2-40, 0.0);
 }
 
 //--------------------------------------------------------------
@@ -372,6 +339,7 @@ void ofApp::gotMessage(ofMessage msg){
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
 }
+
 
 
 
