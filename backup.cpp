@@ -240,12 +240,12 @@ void ofApp::setup(){
     light.setDiffuseColor(ofFloatColor(255.0, 0.0, 0.0f));
     light.setSpecularColor(ofColor(0, 0, 255));
     light.setDirectional();
-    setLightOrientation(ofVec3f(0.0f, -50.0f, -500.0f));
+    setLightOrientation(ofVec3f(0.0f, -80.0f, 00.0f));
     material.setShininess(120);
-    material.setSpecularColor(ofColor(255, 255, 255, 255));
-    material.setEmissiveColor(ofColor(0, 0, 0, 255));
+    material.setSpecularColor(ofColor::yellow);
+    material.setEmissiveColor(ofColor::cornflowerBlue);
     material.setDiffuseColor(ofColor(255, 255, 255, 255));
-    material.setAmbientColor(ofColor(255, 255, 255, 255));
+    material.setAmbientColor(ofColor::white);
 
     // see size handler too
     windowResized(0,0);
@@ -261,7 +261,7 @@ void ofApp::update(){
     motion.update(1.0f / fps);
     eyeAnimator.update(1.0f / fps);
     camera.setDistance(eyeAnimator.camera.getCurrentValue());
-
+    light.setPosition(0, 0, eyeAnimator.camera.getCurrentValue() - 1500);
     // debug helper
     std::stringstream ss;
     ss << eyeAnimator.getIndex();
@@ -347,6 +347,7 @@ void ofApp::gotMessage(ofMessage msg){
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
 }
+
 
 
 
