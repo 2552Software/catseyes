@@ -88,7 +88,7 @@ public:
     void setup() {
         animator.reset(0.0f);
         animator.setDuration(2.0f);
-        animator.setRepeatType(LOOP_BACK_AND_FORTH);
+        animator.setRepeatType(LOOP);
         animator.setCurve(LINEAR);
 
         camera.reset(500.0f);
@@ -100,7 +100,7 @@ public:
         color.setDuration(1.0f);
         color.setRepeatType(LOOP_BACK_AND_FORTH);
         color.setCurve(LINEAR);
-        color.animateTo(ofColor::blue);
+        color.animateTo(ofColor::orangeRed);
     }
     void startPlaying() {
        setup();
@@ -113,7 +113,7 @@ public:
            add(dir.getPath(i));
        }
 
-       animator.animateTo(images.size()-1); 
+       animator.animateTo(images.size()); 
     }
     void add(const std::string &name) {
         ofImage image;
@@ -187,16 +187,24 @@ class ofApp : public ofBaseApp{
         const float fps = 60.0f;
         float r;
         ofLight	light;
-        ofEasyCam cam;
+        ofEasyCam camera;
         MotionGenerator motion;
         ImageAnimator eyeAnimator;
+        ofMaterial material;
 		void setup();
 		void update();
 		void draw();
         void onAnimQueueDone(ofxAnimatableQueueOfPoint::EventArg&) {
             motion.startPlaying(); //loop the animation endlessly
         }
-
+        void setLightOrientation(ofVec3f rot)       {
+            ofVec3f xax(1, 0, 0);
+            ofVec3f yax(0, 1, 0);
+            ofVec3f zax(0, 0, 1);
+            ofQuaternion q;
+            q.makeRotate(rot.x, xax, rot.y, yax, rot.z, zax);
+            light.setOrientation(q);
+        }
 		void keyPressed(int key);
 		void keyReleased(int key);
 		void mouseMoved(int x, int y );
@@ -229,9 +237,15 @@ void ofApp::setup(){
     eyeAnimator.startPlaying();
 
     light.setup();
-    light.setDiffuseColor(ofColor::white);
-    light.setSpecularColor(ofColor::red);
-    light.setAmbientColor(ofColor::beige);
+    light.setDiffuseColor(ofFloatColor(255.0, 0.0, 0.0f));
+    light.setSpecularColor(ofColor(0, 0, 255));
+    light.setDirectional();
+    setLightOrientation(ofVec3f(0.0f, -50.0f, -500.0f));
+    material.setShininess(120);
+    material.setSpecularColor(ofColor(255, 255, 255, 255));
+    material.setEmissiveColor(ofColor(0, 0, 0, 255));
+    material.setDiffuseColor(ofColor(255, 255, 255, 255));
+    material.setAmbientColor(ofColor(255, 255, 255, 255));
 
     // see size handler too
     windowResized(0,0);
@@ -246,6 +260,7 @@ void ofApp::setup(){
 void ofApp::update(){
     motion.update(1.0f / fps);
     eyeAnimator.update(1.0f / fps);
+    camera.setDistance(eyeAnimator.camera.getCurrentValue());
 
     // debug helper
     std::stringstream ss;
@@ -258,20 +273,28 @@ void ofApp::draw(){
     ofTranslate(ofGetWidth() / 2, ofGetHeight() / 2, 0);
     ofPushMatrix();
     ofPushStyle();
-    cam.begin();
     light.enable();
-    //lighting and motion not working
-    cam.setDistance(eyeAnimator.camera.getCurrentValue());
+    material.begin();
+    camera.begin();
     eyeAnimator.bind();
     ofScale(1.0f, 1.0f, 1.0f); // a bit oblong i figure
     ofRotateXDeg(180.0f); // hide seam
     motion.draw();
     ofDrawSphere(0.0f, 0.0f, 0.0f, r);
     eyeAnimator.unbind();
+    camera.end();
+    material.end();
     light.disable();
-    cam.end();
     ofPopStyle();
     ofPopMatrix();
+}
+//--------------------------------------------------------------
+void ofApp::windowResized(int w, int h) {
+
+    float size = std::min(ofGetHeight(), ofGetHeight());
+    r = std::min(ofGetHeight(), ofGetHeight()) / 3;
+    eyeAnimator.camera.reset(ofGetHeight());
+    eyeAnimator.camera.animateTo(ofGetHeight() / 2);
 }
 
 //--------------------------------------------------------------
@@ -314,16 +337,6 @@ void ofApp::mouseExited(int x, int y){
 
 }
 
-//--------------------------------------------------------------
-void ofApp::windowResized(int w, int h){
-    cam.setDistance(ofGetWidth() / 3);
-    light.setAreaLight(ofGetHeight() / 4, ofGetWidth() / 4);
-    light.setPosition(-ofGetWidth() / 2, ofGetHeight(), 200);
-    float size = std::min(ofGetHeight(), ofGetHeight());
-    r = std::min(ofGetHeight(), ofGetHeight()) / 3;
-    eyeAnimator.camera.reset(ofGetHeight() / 2);
-    eyeAnimator.camera.animateTo(ofGetHeight() / 2+200);
-}
 
 //--------------------------------------------------------------
 void ofApp::gotMessage(ofMessage msg){
@@ -334,6 +347,7 @@ void ofApp::gotMessage(ofMessage msg){
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
 }
+
 
 
 
