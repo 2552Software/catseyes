@@ -297,6 +297,7 @@ class ofApp : public ofBaseApp{
 
 private:
 };
+
 #include "ofApp.h"
 
 //
