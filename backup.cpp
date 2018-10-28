@@ -1,4 +1,4 @@
-#pragma once
+ #pragma once
 
 #include "ofMain.h"
 #include "ofxAnimatableFloat.h"
@@ -141,7 +141,7 @@ private:
                 if (!contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true)) {
                     contourFinder.blobs.clear(); // removes echo but does it make things draw too fast?
                 }
-                grayImage.blurGaussian(10);
+                grayImage.blurGaussian(11);
                 grayImage.threshold(100);
                 int totalArea = grayImage.width*grayImage.height;
                 int minArea = totalArea * 0.001;
@@ -191,7 +191,6 @@ private:
         ofxCvGrayscaleImage grayImage, backgroundImage, grayDiff;
     };
 
-
     class ImageAnimator {
     public:
         const float fps = 60.0f;
@@ -229,6 +228,25 @@ private:
         float turnToY(float y) {
             return ofMap(y, 0.0f, ofGetWidth(), -45.0f, 45.0f);
         }
+        float calc(float val, float len) {
+            float result=0.0f;
+            if (val< len*0.25f) {
+                val = -45;
+            }
+            else if (val < len*0.50f) {
+                val = -22.5;
+            }
+            else if (val < len*0.75f) {
+                val = 22.5;
+            }
+            else {
+               val = 45.5;
+            }
+            return result;
+        }
+        void setAngle(ofVec3f target) {
+            sphere.rotateTo(ofVec3f(calc(target.x, cxScreen), calc(target.y, cyScreen)));
+        }
         void update() {
             float f = 1.0f / fps;
             animator.update(f);
@@ -244,13 +262,14 @@ private:
                     if (blob.area > max && blob.centroid.x > 1 && blob.centroid.y > 1) {  //x,y 1,1 is some sort of strange case
                         y = blob.centroid.x; //(ofGetHeight() / imgHeight)
                         x = blob.centroid.y;
+                        setAngle(blob.centroid);
                     }
                 }
+                // think of screen in a 4x4 (and when working 32x32 or something) grid
                 // just add the first one?  or all of them?
                 // rotate is the opposite
-                sphere.rotateTo(ofVec3f(turnToX(x), turnToY(y)));
                 holdPosition = fps;
-                path.append(ofPoint(turnToX(x), turnToY(y)));
+                //path.append(ofPoint(turnToX(x), turnToY(y)));
             }
             else {
                 if (--holdPosition < 0) {
@@ -266,15 +285,12 @@ private:
         }
         void windowResized(int w, int h) {
             sphere.setRadius(std::min(w, h));
-            //no camera animation at this time. Please stay tuned camera.reset(h);
-            //camera.animateTo(h / 2);
         }
         void draw() {
             bind();
             scale();
             sphere.draw();
             unbind();
-
         }
         void startPlaying() {
             string path = "";
@@ -325,24 +341,51 @@ private:
     };
 
 
-class ofApp : public ofBaseApp{
-
-	public:
-        ofLight	light;
-        ofEasyCam camera;
-        ImageAnimator eyeAnimator;
-        ofMaterial material;
-		void setup();
-		void update();
-		void draw();
-        void setLightOrientation(ofVec3f rot)       {
+    class Light : public ofLight  {
+    public:
+        void setup() {
+            ofLight::setup();
+            setDiffuseColor(ofFloatColor(255.0, 0.0, 0.0f));
+            setSpecularColor(ofColor(0, 0, 255));
+            setDirectional();
+            setOrientation(ofVec3f(0.0f, -80.0f, 00.0f));
+        }
+        void setOrientation(ofVec3f rot) {
             ofVec3f xax(1, 0, 0);
             ofVec3f yax(0, 1, 0);
             ofVec3f zax(0, 0, 1);
             ofQuaternion q;
             q.makeRotate(rot.x, xax, rot.y, yax, rot.z, zax);
-            light.setOrientation(q);
+            ofLight::setOrientation(q);
         }
+    };
+    class Material : public ofMaterial {
+    public:
+        void setup() {
+            setShininess(120);
+            setSpecularColor(ofColor::yellow);
+            setEmissiveColor(ofColor::blue);
+            setDiffuseColor(ofColor::sandyBrown);
+            setAmbientColor(ofColor::white);
+        }
+    };
+    class Camera : public ofEasyCam {
+    public:
+        void setup() {
+            setDistance(4286); // magic number 
+        }
+    };
+
+class ofApp : public ofBaseApp{
+
+	public:
+        Light	light;
+        Camera camera;
+        ImageAnimator eyeAnimator;
+        Material material;
+		void setup();
+		void update();
+		void draw();
 		void keyPressed(int key);
 		void keyReleased(int key);
 		void mouseMoved(int x, int y );
@@ -357,6 +400,7 @@ class ofApp : public ofBaseApp{
 
 private:
 };
+
 #include "ofApp.h"
 
 //
@@ -364,27 +408,16 @@ private:
 void ofApp::setup(){
     ofSetLogLevel(OF_LOG_NOTICE);
     ofLogToConsole();
-    ofBackground(ofColor::black); // defaults
-    ofSetColor(ofColor::white);
     ofEnableLighting();
     ofEnableDepthTest();
     ofSetVerticalSync(true);
     ofDisableArbTex();
     ofSetSmoothLighting(true);
     ofDisableAlphaBlending();
-    camera.setDistance(4286); // magic number 
+    camera.setup();
     eyeAnimator.setup();
     light.setup();
-    light.setDiffuseColor(ofFloatColor(255.0, 0.0, 0.0f));
-    light.setSpecularColor(ofColor(0, 0, 255));
-    light.setDirectional();
-    setLightOrientation(ofVec3f(0.0f, -80.0f, 00.0f));
-    material.setShininess(120);
-    material.setSpecularColor(ofColor::yellow);
-    material.setEmissiveColor(ofColor::blue);
-    material.setDiffuseColor(ofColor::sandyBrown);
-    material.setAmbientColor(ofColor::white);
-
+    material.setup();
 }
 
 //--------------------------------------------------------------
@@ -402,6 +435,7 @@ void ofApp::update(){
 void ofApp::draw(){
     ofPushMatrix();
     ofPushStyle();
+
     light.enable();
     material.begin();
     camera.begin();
@@ -417,7 +451,6 @@ void ofApp::draw(){
 //--------------------------------------------------------------
 void ofApp::windowResized(int w, int h) {
     eyeAnimator.windowResized(w, h);
-
 }
 
 //--------------------------------------------------------------
@@ -470,4 +503,3 @@ void ofApp::gotMessage(ofMessage msg){
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
 }
-
