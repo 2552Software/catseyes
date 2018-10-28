@@ -1,4 +1,4 @@
- #pragma once
+#pragma once
 
 #include "ofMain.h"
 #include "ofxAnimatableFloat.h"
@@ -9,8 +9,6 @@
 
 const int imgWidth = 640;// 320; // the motion image from the camera
 const int imgHeight = 480;//240;
-const int cxScreen = 2880; // screen size mac 2880x1800 pc  3840 x 2160
-const int cyScreen = 1800;
 
 // always knows it rotation coordindates
 class SuperSphere : public ofSpherePrimitive {
@@ -18,10 +16,24 @@ public:
     void draw() {
         ofPushMatrix();
         ofTranslate((ofGetWidth() / 2) - getRadius(), ofGetHeight() / 2, 0);
+        rotate(currentRotation);
         ofSpherePrimitive::draw();
         ofPopMatrix();
     }
     void rotateTo(ofVec3f target) {
+        ofLogNotice() << "rotateTo " << target;
+        //currentRotation *= -1;
+       // rotate(currentRotation);
+       // rotate(target);
+        currentRotation = target;
+        return;
+        if (!target.x && !target.y && !target.z) {
+            // go to 0
+            currentRotation *= -1;
+            rotate(currentRotation);
+            currentRotation = target;
+            return;
+        }
         // current x is 180, target is 5, need to move to 5 but -175
         // current x is 5, target is 180, need to move to 180 but +175
         currentRotation = target - currentRotation;
@@ -34,9 +46,9 @@ public:
     }
 private:
     void rotate(ofVec3f target) { 
-        rotateDeg(target.x, 1.0f, 0.0f, 0.0f);
-        rotateDeg(target.y, 0.0f, 1.0f, 0.0f);
-        rotateDeg(target.z, 0.0f, 0.0f, 1.0f);
+        ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
+        ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
+        ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
     }
     ofVec3f currentRotation;
 };
@@ -50,7 +62,7 @@ public:
         if (targetValue.getCurrentPosition().x == 0) {
             int i = 0;
         }
-        if (animSteps.size() > 1) {
+        if (animSteps.size() > 2) {
             ofLogNotice() << " cap list size to 3 ";
             animSteps.pop_back(); // only keep the  most recent
         }
@@ -83,13 +95,13 @@ public:
         ofLogNotice() << "percent done " << anim.getPercentDone();
         return anim.getCurrentPosition();
     }
-    void append(const ofPoint& target) {
+    void append(const ofVec3f& target) {
         ofxAnimatableOfPoint targetPoint;
         if (animSteps.size() > 0) {
             targetPoint.setPosition(getPoint());
         }
         targetPoint.animateTo(target);
-        targetPoint.setDuration(0.15);
+        targetPoint.setDuration(0.25);
         targetPoint.setRepeatType(PLAY_ONCE);
         targetPoint.setCurve(LINEAR);
         addTransition(targetPoint);
@@ -141,22 +153,18 @@ private:
                 if (!contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true)) {
                     contourFinder.blobs.clear(); // removes echo but does it make things draw too fast?
                 }
-                grayImage.blurGaussian(11);
-                grayImage.threshold(100);
-                int totalArea = grayImage.width*grayImage.height;
-                int minArea = totalArea * 0.001;
-                int maxArea = totalArea * 0.75;
-                int nConsidered = 10;
-                if (!contourDrawer.findContours(grayImage, minArea, maxArea, nConsidered, true)) {
+                grayImage.blurGaussian(3);
+                grayImage.threshold(50);
+                if (!contourDrawer.findContours(grayImage, 5, (imgWidth*imgHeight), 128, true)) {
                     contourDrawer.blobs.clear(); 
                 }
             }
         }
-        void draw() {
+        void draw(float cxScreen, float cyScreen) {
             ofPushStyle();
             ofPushMatrix();
             ofNoFill();
-            ofSetLineWidth(5);// ofRandom(1, 5));
+            ofSetLineWidth(1);// ofRandom(1, 5));
             for (auto& blob : contourDrawer.blobs) {
                 ofPolyline line;
                 for (int i = 0; i < blob.nPts; i++) {
@@ -166,7 +174,7 @@ private:
                 line.scale(cxScreen / imgWidth, cyScreen / imgHeight);
                 line.draw();
             }
-            ofSetLineWidth(15);// ofRandom(1, 5));
+            ofSetLineWidth(5);// ofRandom(1, 5));
             if (contourFinder.blobs.size() > 0){
                 for (auto& blob : contourFinder.blobs) {
                     ofPolyline line;
@@ -194,8 +202,8 @@ private:
     class ImageAnimator {
     public:
         const float fps = 60.0f;
-
         void setup() {
+
             ofSetFrameRate(fps);
 
             animator.reset(0.0f);
@@ -229,23 +237,19 @@ private:
             return ofMap(y, 0.0f, ofGetWidth(), -45.0f, 45.0f);
         }
         float calc(float val, float len) {
-            float result=0.0f;
-            if (val< len*0.25f) {
-                val = -45;
+            float result = -45.0f;
+            float factor = 0.10f;
+            for (; true; result += 10.0f, factor += 0.10f) {
+                if (val< len*factor) {
+                    break;
+                }
             }
-            else if (val < len*0.50f) {
-                val = -22.5;
-            }
-            else if (val < len*0.75f) {
-                val = 22.5;
-            }
-            else {
-               val = 45.5;
-            }
+            ofLogNotice() << "result " << result << " source " << val << " of " << len;
             return result;
         }
         void setAngle(ofVec3f target) {
-            sphere.rotateTo(ofVec3f(calc(target.x, cxScreen), calc(target.y, cyScreen)));
+            //path.append(ofVec3f(calc(target.y, imgWidth), calc(target.x, imgHeight)));
+            path.append(ofVec3f(calc(target.y, imgWidth), 0));
         }
         void update() {
             float f = 1.0f / fps;
@@ -253,27 +257,30 @@ private:
             color.update(f);
             camera.update(f);
             path.update(f);
-            float y = 0.0f; //(ofGetHeight() / imgHeight)
-            float x = 0.0f;
             float max = 0.0f;
             contours.update();
             if (contours.contourFinder.blobs.size() > 0) {
+                ofDefaultVec3 target;
+                bool found = false;
                 for (auto& blob : contours.contourFinder.blobs) {
-                    if (blob.area > max && blob.centroid.x > 1 && blob.centroid.y > 1) {  //x,y 1,1 is some sort of strange case
-                        y = blob.centroid.x; //(ofGetHeight() / imgHeight)
-                        x = blob.centroid.y;
-                        setAngle(blob.centroid);
+                    if (blob.area > 400 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
+                        target = blob.centroid;
+                        found = true;
                     }
+                }
+                if (found) {
+                    setAngle(target);
                 }
                 // think of screen in a 4x4 (and when working 32x32 or something) grid
                 // just add the first one?  or all of them?
                 // rotate is the opposite
                 holdPosition = fps;
-                //path.append(ofPoint(turnToX(x), turnToY(y)));
             }
             else {
                 if (--holdPosition < 0) {
+                    ofLogNotice() << "home ";
                     sphere.home();
+                    holdPosition = fps;
                 }
             }
             for (ofImage& image : images) {
@@ -289,6 +296,7 @@ private:
         void draw() {
             bind();
             scale();
+            sphere.rotateTo(path.getCurrentValue().getCurrentPosition());
             sphere.draw();
             unbind();
         }
@@ -400,6 +408,7 @@ class ofApp : public ofBaseApp{
 
 private:
 };
+
 
 #include "ofApp.h"
 
