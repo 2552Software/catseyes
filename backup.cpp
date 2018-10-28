@@ -41,14 +41,6 @@ private:
     ofVec3f currentRotation;
 };
 
-
-
-
-// debug helper
-//std::stringstream ss;
-//ss << eyeAnimator.getIndex();
-//ofSetWindowTitle(ss.str());
-
 class ofxAnimatableQueueOfPoint {
 public:
     ofxAnimatableQueueOfPoint() {
@@ -110,7 +102,6 @@ public:
         playing = true;
     }
 
-
 protected:
     bool playing = false;
 private:
@@ -119,206 +110,220 @@ private:
 };
 
 
-class ContoursBuilder {
-public:
-    void setup() {
-        vector<ofVideoDevice> devices = video.listDevices();
-        for (auto& device : devices) {
-            if (device.deviceName.find("facetime") == std::string::npos) {
-                video.setDeviceID(device.id);
-                break;
-            }
-        }
-        video.setVerbose(true);
-        video.setup(imgWidth, imgHeight);
-        colorImg.allocate(imgWidth, imgHeight);
-        grayImage.allocate(imgWidth, imgHeight);
-        grayDiff.allocate(imgWidth, imgHeight);
-    }
-    // return true if updated
-    bool update() {
-        video.update();
-        if (video.isFrameNew()) { // && (ofGetFrameNum() & 1) to slow things down
-                                  // clear less often
-            colorImg.setFromPixels(video.getPixels());
-            grayImage = colorImg; // convert our color image to a grayscale image
-                                  //grayImage.blurHeavily();
-            if (backgroundImage.bAllocated) {
-                grayDiff.absDiff(backgroundImage, grayImage);
-            }
-            backgroundImage = grayImage; // only track new items -- so eye moves when objects move
-            grayDiff.threshold(50); // turn any pixels above 30 white, and below 100 black
-            if (contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true) > 0) {
-                return true;
-            }
-            else {
-                contourFinder.blobs.clear(); // removes echo but does it make things draw too fast?
-            }
-        }
-        return false; // no update
-    }
-    void draw() {
-        ofPushStyle();
-        ofPushMatrix();
-        float w = ofGetWidth();
-        float xFactor = (ofGetWidth() / imgWidth);
-        float yFactor = (ofGetHeight() / imgHeight);
-        //ofTranslate(0, ofGetHeight()/4, 0);
-        ofNoFill();
-        ofSetLineWidth(10);// ofRandom(1, 5));
-        for (auto& blob : contourFinder.blobs) {
-            ofPolyline line;
-            for (int i = 0; i < blob.nPts; i++) {
-                line.addVertex((imgWidth - blob.pts[i].x), blob.pts[i].y);
-            }
-            line.close();
-            line.scale(cxScreen / imgWidth, cyScreen / imgHeight);
-            line.draw();
-            //ofDrawRectangle(blob.boundingRect.x, blob.boundingRect.y, blob.boundingRect.width, blob.boundingRect.height);
-        }
-        ofPopMatrix();
-        ofPopStyle();
-    }
-
-    ofxCvContourFinder contourFinder;
-private:
-    ofVideoGrabber video;
-    ofxCvColorImage colorImg;
-    ofxCvGrayscaleImage grayImage, backgroundImage, grayDiff;
-};
-
-
-class ImageAnimator {
-public:        
-    const float fps = 60.0f;
-    
-    void setup() {
-        ofSetFrameRate(fps);
-
-        animator.reset(0.0f);
-        animator.setDuration(2.0f);
-        animator.setRepeatType(LOOP);
-        animator.setCurve(LINEAR);
-
-        camera.reset(500.0f);
-        camera.setDuration(5.0f);
-        camera.setRepeatType(LOOP_BACK_AND_FORTH);
-        camera.setCurve(EASE_IN);
-
-        color.setColor(ofColor::white);
-        color.setDuration(1.0f);
-        color.setRepeatType(LOOP_BACK_AND_FORTH);
-        color.setCurve(LINEAR);
-        color.animateTo(ofColor::orangeRed);
-
-        contours.setup();
-        startPlaying();
-
-        sphere.rotateDeg(180.0f, 0.0f, 1.0f, 0.0f); // flip to front
-        sphere.setResolution(25);
-        sphere.setRadius(std::min(ofGetWidth(), ofGetHeight()));
-    }
-    // convert point on X to a rotation
-    float turnToX(float x) {
-        return ofMap(x, 0.0f, ofGetHeight(), -45.0f, 45.0f);
-    }
-    float turnToY(float y) {
-        return ofMap(y, 0.0f, ofGetWidth(), -45.0f, 45.0f);
-    }
-    void update() {
-        float f = 1.0f / fps;
-        animator.update(f);
-        color.update(f);
-        camera.update(f);
-        path.update(f);
-        float y = 0.0f; //(ofGetHeight() / imgHeight)
-        float x = 0.0f;
-        float max = 0.0f;
-        if (contours.update()) {
-            for (auto& blob : contours.contourFinder.blobs) {
-                if (blob.area > max && blob.centroid.x > 1 && blob.centroid.y > 1) {  //x,y 1,1 is some sort of strange case
-                    y = blob.centroid.x; //(ofGetHeight() / imgHeight)
-                    x = blob.centroid.y;
+    class ContoursBuilder {
+    public:
+        void setup() {
+            vector<ofVideoDevice> devices = video.listDevices();
+            for (auto& device : devices) {
+                if (device.deviceName.find("facetime") == std::string::npos) {
+                    video.setDeviceID(device.id);
+                    break;
                 }
             }
-            // just add the first one?  or all of them?
-            // rotate is the opposite
-            sphere.rotateTo(ofVec3f(turnToX(x), turnToY(y)));
-            holdPosition = fps;
-            path.append(ofPoint(turnToX(x), turnToY(y)));
+            video.setVerbose(true);
+            video.setup(imgWidth, imgHeight);
+            colorImg.allocate(imgWidth, imgHeight);
+            grayImage.allocate(imgWidth, imgHeight);
+            grayDiff.allocate(imgWidth, imgHeight);
         }
-        else {
-            if (--holdPosition < 0){
-                sphere.home();
+        // return true if updated
+        void update() {
+            video.update();
+            if (video.isFrameNew()) { // && (ofGetFrameNum() & 1) to slow things down
+                                      // clear less often
+                colorImg.setFromPixels(video.getPixels());
+                grayImage = colorImg; // convert our color image to a grayscale image
+                if (backgroundImage.bAllocated) {
+                    grayDiff.absDiff(backgroundImage, grayImage);
+                }
+                backgroundImage = grayImage; // only track new items -- so eye moves when objects move
+                grayDiff.threshold(50); // turn any pixels above 30 white, and below 100 black
+                if (!contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true)) {
+                    contourFinder.blobs.clear(); // removes echo but does it make things draw too fast?
+                }
+                grayImage.blurGaussian(10);
+                grayImage.threshold(100);
+                int totalArea = grayImage.width*grayImage.height;
+                int minArea = totalArea * 0.001;
+                int maxArea = totalArea * 0.75;
+                int nConsidered = 10;
+                if (!contourDrawer.findContours(grayImage, minArea, maxArea, nConsidered, true)) {
+                    contourDrawer.blobs.clear(); 
+                }
             }
         }
-        for (ofImage& image : images) {
-            image.update(); // keep updated
+        void draw() {
+            ofPushStyle();
+            ofPushMatrix();
+            ofNoFill();
+            ofSetLineWidth(5);// ofRandom(1, 5));
+            for (auto& blob : contourDrawer.blobs) {
+                ofPolyline line;
+                for (int i = 0; i < blob.nPts; i++) {
+                    line.addVertex((imgWidth - blob.pts[i].x), blob.pts[i].y);
+                }
+                line.close();
+                line.scale(cxScreen / imgWidth, cyScreen / imgHeight);
+                line.draw();
+            }
+            ofSetLineWidth(15);// ofRandom(1, 5));
+            if (contourFinder.blobs.size() > 0){
+                for (auto& blob : contourFinder.blobs) {
+                    ofPolyline line;
+                    for (int i = 0; i < blob.nPts; i++) {
+                        line.addVertex((imgWidth - blob.pts[i].x), blob.pts[i].y);
+                    }
+                    line.close();
+                    line.scale(cxScreen / imgWidth, cyScreen / imgHeight);
+                    line.draw();
+                    //ofDrawRectangle(blob.boundingRect.x, blob.boundingRect.y, blob.boundingRect.width, blob.boundingRect.height);
+                }
+            }
+            ofPopMatrix();
+            ofPopStyle();
         }
-    }
-    void scale() {
-        //ofScale(1.0f, 1.0f, 1.0f); // a bit oblong i figure
-    }
-    void windowResized(int w, int h) {
-        sphere.setRadius(std::min(w, h));
-        //no camera animation at this time. Please stay tuned camera.reset(h);
-        //camera.animateTo(h / 2);
-    }
-    void draw() {
-        //vector<ofVec3f> spherePoints = sphere.getMesh().getVertices();
 
-        bind();
-        scale();
-        sphere.draw();
-        unbind();
-    }
-    void startPlaying() {
-       string path = "";
-       ofDirectory dir(path);
-       dir.allowExt("png");
-       dir.allowExt("jpg");
-       dir.listDir();
-       for (size_t i = 0; i < dir.size(); i++) {
-           add(dir.getPath(i));
-       }
+        ofxCvContourFinder contourFinder;
+        ofxCvContourFinder contourDrawer;
+    private:
+        ofVideoGrabber video;
+        ofxCvColorImage colorImg;
+        ofxCvGrayscaleImage grayImage, backgroundImage, grayDiff;
+    };
 
-       animator.animateTo(images.size()); 
-    }
-    void add(const std::string &name) {
-        ofImage image;
-        if (image.load(name)){
+
+    class ImageAnimator {
+    public:
+        const float fps = 60.0f;
+
+        void setup() {
+            ofSetFrameRate(fps);
+
+            animator.reset(0.0f);
+            animator.setDuration(2.0f);
+            animator.setRepeatType(LOOP);
+            animator.setCurve(LINEAR);
+
+            camera.reset(500.0f);
+            camera.setDuration(5.0f);
+            camera.setRepeatType(LOOP_BACK_AND_FORTH);
+            camera.setCurve(EASE_IN);
+
+            color.setColor(ofColor::white);
+            color.setDuration(1.0f);
+            color.setRepeatType(LOOP_BACK_AND_FORTH);
+            color.setCurve(LINEAR);
+            color.animateTo(ofColor::orangeRed);
+
+            contours.setup();
+            startPlaying();
+
+            sphere.rotateDeg(180.0f, 0.0f, 1.0f, 0.0f); // flip to front
+            sphere.setResolution(25);
+            sphere.setRadius(std::min(ofGetWidth(), ofGetHeight()));
+        }
+        // convert point on X to a rotation
+        float turnToX(float x) {
+            return ofMap(x, 0.0f, ofGetHeight(), -45.0f, 45.0f);
+        }
+        float turnToY(float y) {
+            return ofMap(y, 0.0f, ofGetWidth(), -45.0f, 45.0f);
+        }
+        void update() {
+            float f = 1.0f / fps;
+            animator.update(f);
+            color.update(f);
+            camera.update(f);
+            path.update(f);
+            float y = 0.0f; //(ofGetHeight() / imgHeight)
+            float x = 0.0f;
+            float max = 0.0f;
+            contours.update();
+            if (contours.contourFinder.blobs.size() > 0) {
+                for (auto& blob : contours.contourFinder.blobs) {
+                    if (blob.area > max && blob.centroid.x > 1 && blob.centroid.y > 1) {  //x,y 1,1 is some sort of strange case
+                        y = blob.centroid.x; //(ofGetHeight() / imgHeight)
+                        x = blob.centroid.y;
+                    }
+                }
+                // just add the first one?  or all of them?
+                // rotate is the opposite
+                sphere.rotateTo(ofVec3f(turnToX(x), turnToY(y)));
+                holdPosition = fps;
+                path.append(ofPoint(turnToX(x), turnToY(y)));
+            }
+            else {
+                if (--holdPosition < 0) {
+                    sphere.home();
+                }
+            }
+            for (ofImage& image : images) {
+                image.update(); // keep updated
+            }
+        }
+        void scale() {
+            //ofScale(1.0f, 1.0f, 1.0f); // a bit oblong i figure
+        }
+        void windowResized(int w, int h) {
+            sphere.setRadius(std::min(w, h));
+            //no camera animation at this time. Please stay tuned camera.reset(h);
+            //camera.animateTo(h / 2);
+        }
+        void draw() {
+            bind();
+            scale();
+            sphere.draw();
+            unbind();
+
+        }
+        void startPlaying() {
+            string path = "";
+            ofDirectory dir(path);
+            dir.allowExt("png");
+            dir.allowExt("jpg");
+            dir.listDir();
+            for (size_t i = 0; i < dir.size(); i++) {
+                add(dir.getPath(i));
+            }
+
+            animator.animateTo(images.size());
+        }
+        void add(const std::string &name) {
+            ofImage image;
+            if (image.load(name)) {
+                images.push_back(image);
+            }
+        }
+        void add(ofImage image) {
             images.push_back(image);
         }
-    }
-    void add(ofImage image) {
-        images.push_back(image);
-    }
-    ofImage& getImage() {
-        return images[getIndex()];
-    }
-    int getIndex() {
-        return (int)animator.getCurrentValue();
-    }
-    // allow for various eyes
-    void unbind() {
-        getImage().getTexture().unbind();
-    }
-    void bind() {
-        color.applyCurrentColor();
-        //ofRotateZDeg(180.0);
-        getImage().getTexture().bind();
-    }
-    ContoursBuilder contours;
-    ofxAnimatableFloat camera;
-    ofxAnimatableFloat animator; 
-    ofxAnimatableOfColor color; // image  colors
-    ofxAnimatableQueueOfPoint path; // path of image
-    SuperSphere sphere; //ofSpherePrimitive
+        ofImage& getImage() {
+            return images[getIndex()];
+        }
+        int getIndex() {
+            return (int)animator.getCurrentValue();
+        }
+        // allow for various eyes
+        void unbind() {
+            getImage().getTexture().unbind();
+        }
+        void bind() {
+            color.applyCurrentColor();
+            //ofRotateZDeg(180.0);
+            getImage().getTexture().bind();
+        }
+        ContoursBuilder contours;
+        ofxAnimatableFloat camera;
+        ofxAnimatableFloat animator;
+        ofxAnimatableOfColor color; // image  colors
+        ofxAnimatableQueueOfPoint path; // path of image
+        SuperSphere sphere; //ofSpherePrimitive
 
-private:
-    std::vector<ofImage> images;
-    float holdPosition = fps;
-};
+    private:
+        std::vector<ofImage> images;
+        float holdPosition = fps;
+    };
+
 
 class ofApp : public ofBaseApp{
 
@@ -352,7 +357,6 @@ class ofApp : public ofBaseApp{
 
 private:
 };
-
 #include "ofApp.h"
 
 //
@@ -360,7 +364,8 @@ private:
 void ofApp::setup(){
     ofSetLogLevel(OF_LOG_NOTICE);
     ofLogToConsole();
-    ofBackground(ofColor::black);
+    ofBackground(ofColor::black); // defaults
+    ofSetColor(ofColor::white);
     ofEnableLighting();
     ofEnableDepthTest();
     ofSetVerticalSync(true);
@@ -396,16 +401,16 @@ void ofApp::update(){
 //--------------------------------------------------------------
 void ofApp::draw(){
     ofPushMatrix();
-    ofTranslate(ofGetWidth() / 2, ofGetHeight() / 2, 0);
     ofPushStyle();
     light.enable();
     material.begin();
     camera.begin();
     eyeAnimator.draw();
     camera.end();
+    eyeAnimator.contours.draw();
     material.end();
     light.disable();
-    eyeAnimator.contours.draw();
+
     ofPopStyle();
     ofPopMatrix();
 }
@@ -465,3 +470,4 @@ void ofApp::gotMessage(ofMessage msg){
 void ofApp::dragEvent(ofDragInfo dragInfo){ 
 
 }
+
