@@ -9,6 +9,40 @@
 
 const int imgWidth = 640;// 320; // the motion image from the camera
 const int imgHeight = 480;//240;
+const int cxScreen = 2880; // screen size mac 2880x1800 pc  3840 x 2160
+const int cyScreen = 1800;
+
+// always knows it rotation coordindates
+class SuperSphere : public ofSpherePrimitive {
+public:
+    void draw() {
+        ofPushMatrix();
+        ofTranslate((ofGetWidth() / 2) - getRadius(), ofGetHeight() / 2, 0);
+        ofSpherePrimitive::draw();
+        ofPopMatrix();
+    }
+    void rotateTo(ofVec3f target) {
+        // current x is 180, target is 5, need to move to 5 but -175
+        // current x is 5, target is 180, need to move to 180 but +175
+        currentRotation = target - currentRotation;
+        ofLogNotice() << "currentRotation " << currentRotation;
+        rotate(currentRotation);
+        currentRotation = target;
+    }
+    void home() {
+        rotateTo(ofVec3f(0.0f, 0.0f));
+    }
+private:
+    void rotate(ofVec3f target) { 
+        rotateDeg(target.x, 1.0f, 0.0f, 0.0f);
+        rotateDeg(target.y, 0.0f, 1.0f, 0.0f);
+        rotateDeg(target.z, 0.0f, 0.0f, 1.0f);
+    }
+    ofVec3f currentRotation;
+};
+
+
+
 
 // debug helper
 //std::stringstream ss;
@@ -56,14 +90,6 @@ public:
     ofPoint getPoint() {
         ofLogNotice() << "percent done " << anim.getPercentDone();
         return anim.getCurrentPosition();
-    }
-    void draw() {
-        ofPoint point = getPoint();
-        // always draw at the last point to keep path connected bugbug after a few minutes go back to home
-        ofLogNotice() << "rotate " << point;
-        ofRotateXDeg(point.x);
-        ofRotateYDeg(point.y);
-        ofRotateZDeg(point.z);
     }
     void append(const ofPoint& target) {
         ofxAnimatableOfPoint targetPoint;
@@ -125,25 +151,30 @@ public:
             if (contourFinder.findContours(grayDiff, 5, (imgWidth*imgHeight), 128, false, true) > 0) {
                 return true;
             }
+            else {
+                contourFinder.blobs.clear(); // removes echo but does it make things draw too fast?
+            }
         }
         return false; // no update
     }
     void draw() {
         ofPushStyle();
         ofPushMatrix();
+        float w = ofGetWidth();
+        float xFactor = (ofGetWidth() / imgWidth);
+        float yFactor = (ofGetHeight() / imgHeight);
+        //ofTranslate(0, ofGetHeight()/4, 0);
         ofNoFill();
         ofSetLineWidth(10);// ofRandom(1, 5));
         for (auto& blob : contourFinder.blobs) {
             ofPolyline line;
             for (int i = 0; i < blob.nPts; i++) {
-                float x = (ofGetWidth() / imgWidth)*(imgWidth - blob.pts[i].x);
-                float y = (ofGetHeight() / imgHeight)*blob.pts[i].y;
-                // ofLogNotice() << "point x " << x << " point y " << y;
-                line.addVertex(x, y);
+                line.addVertex((imgWidth - blob.pts[i].x), blob.pts[i].y);
             }
             line.close();
+            line.scale(cxScreen / imgWidth, cyScreen / imgHeight);
             line.draw();
-            //ofDrawRectangle(x + blob.boundingRect.x, y + blob.boundingRect.y, blob.boundingRect.width, blob.boundingRect.height);
+            //ofDrawRectangle(blob.boundingRect.x, blob.boundingRect.y, blob.boundingRect.width, blob.boundingRect.height);
         }
         ofPopMatrix();
         ofPopStyle();
@@ -183,59 +214,46 @@ public:
         contours.setup();
         startPlaying();
 
-
+        sphere.rotateDeg(180.0f, 0.0f, 1.0f, 0.0f); // flip to front
+        sphere.setResolution(25);
+        sphere.setRadius(std::min(ofGetWidth(), ofGetHeight()));
     }
     // convert point on X to a rotation
     float turnToX(float x) {
-        // 0 is no turn, - is turn right, + left
-        return ofMap(x, 0, ofGetHeight(), -45, 45);
+        return ofMap(x, 0.0f, ofGetHeight(), -45.0f, 45.0f);
     }
     float turnToY(float y) {
-        // 0 is no turn, - is turn right, + left
-        return ofMap(y, 0, ofGetWidth(), 45, -45);
+        return ofMap(y, 0.0f, ofGetWidth(), -45.0f, 45.0f);
     }
-    ofVec3f currentRotation;
     void update() {
-        ofVec3f nextRotation;
         float f = 1.0f / fps;
         animator.update(f);
         color.update(f);
         camera.update(f);
         path.update(f);
+        float y = 0.0f; //(ofGetHeight() / imgHeight)
+        float x = 0.0f;
+        float max = 0.0f;
         if (contours.update()) {
-            int max = 0;
-            ofxCvBlob blob2;
             for (auto& blob : contours.contourFinder.blobs) {
-                if (blob.area > max) {
-                    max = blob.area;
-                    blob2 = blob;
+                if (blob.area > max && blob.centroid.x > 1 && blob.centroid.y > 1) {  //x,y 1,1 is some sort of strange case
+                    y = blob.centroid.x; //(ofGetHeight() / imgHeight)
+                    x = blob.centroid.y;
                 }
             }
             // just add the first one?  or all of them?
-            float x = (ofGetWidth() / imgWidth)*(imgWidth - blob2.centroid.x);
-            float y = (ofGetHeight() / imgHeight)*blob2.centroid.y;
-            nextRotation.x = x;
-            nextRotation.y = y;
+            // rotate is the opposite
+            sphere.rotateTo(ofVec3f(turnToX(x), turnToY(y)));
+            holdPosition = fps;
             path.append(ofPoint(turnToX(x), turnToY(y)));
-
+        }
+        else {
+            if (--holdPosition < 0){
+                sphere.home();
+            }
         }
         for (ofImage& image : images) {
             image.update(); // keep updated
-        }
-        if (nextRotation.x != currentRotation.x || nextRotation.y != currentRotation.y || nextRotation.z != currentRotation.z) {
-            currentRotation = nextRotation;
-            sphere.rotateDeg(nextRotation.x, 1.0f, 0.0f, 0.0f);
-            sphere.rotateDeg(nextRotation.y, 0.0f, 1.0f, 0.0f);
-            sphere.rotateDeg(nextRotation.z, 0.0f, 0.0f, 1.0f);
-            freshSphere = false;
-        }
-        else if (!freshSphere) {
-            currentRotation.x = currentRotation.y = currentRotation.z = 0.0f;
-            sphere = ofSpherePrimitive(); // reset
-            sphere.rotateDeg(180.0f, 0.0f, 1.0f, 0.0f); // flip to front
-            sphere.setResolution(25);
-            sphere.setRadius(std::min(ofGetWidth(), ofGetHeight()));
-            freshSphere = true;
         }
     }
     void scale() {
@@ -253,7 +271,6 @@ public:
         scale();
         sphere.draw();
         unbind();
-        contours.draw();
     }
     void startPlaying() {
        string path = "";
@@ -296,11 +313,11 @@ public:
     ofxAnimatableFloat animator; 
     ofxAnimatableOfColor color; // image  colors
     ofxAnimatableQueueOfPoint path; // path of image
-    ofSpherePrimitive sphere;
+    SuperSphere sphere; //ofSpherePrimitive
 
 private:
     std::vector<ofImage> images;
-    bool freshSphere = false;
+    float holdPosition = fps;
 };
 
 class ofApp : public ofBaseApp{
