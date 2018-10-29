@@ -1,4 +1,4 @@
-   
+    
 #pragma once
 
 #include "ofMain.h"
@@ -16,7 +16,6 @@ class SuperSphere : public ofSpherePrimitive {
 public:
     void draw() {
         ofPushMatrix();
-        ofTranslate((ofGetWidth() / 2) - getRadius(), ofGetHeight() / 2, 0);
         rotate(currentRotation);
         ofSpherePrimitive::draw();
         ofPopMatrix();
@@ -232,7 +231,7 @@ private:
         void setAngle(ofVec3f target) {
             //path.append(ofVec3f(calc(target.y, imgWidth), calc(target.x, imgHeight)));
             //sphere.rotateTo(ofVec3f(calc(target.y, -25.0f, 45.0f, imgWidth), calc(target.x, -40.0f, 45.0f, imgHeight)));
-            sphere.rotateTo(ofVec3f(0, calc(imgWidth-target.x, -40.0f, 45.0f, imgHeight)));
+            sphere.rotateTo(ofVec3f(0, calc(imgWidth-target.x, -30.0f, 30.0f, imgHeight)));
         }
         void update() {
             float f = 1.0f / fps;
@@ -363,6 +362,7 @@ class ofApp : public ofBaseApp{
         Material material;
         void setup() {
             ofSetWindowShape(ofGetScreenWidth(), ofGetScreenHeight());
+            ofSetBackgroundColor(ofColor::black);
             ofSetLogLevel(OF_LOG_NOTICE);
             ofLogToConsole();
             ofEnableLighting();
@@ -389,13 +389,15 @@ class ofApp : public ofBaseApp{
 
         //--------------------------------------------------------------
         void draw() {
-            ofPushMatrix();
             ofPushStyle();
 
             light.enable();
             material.begin();
             camera.begin();
+            ofPushMatrix();
+            ofTranslate((ofGetWidth() / 2) - eyeAnimator.sphere.getRadius(), ofGetHeight() / 2 - eyeAnimator.sphere.getRadius()/2, 0);
             eyeAnimator.draw();
+            ofPopMatrix();
             camera.end();
             eyeAnimator.contours.draw(ofGetScreenWidth(), ofGetScreenHeight());
             material.end();
