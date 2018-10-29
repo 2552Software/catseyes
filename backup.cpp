@@ -1,5 +1,4 @@
-    
-#pragma once
+ #pragma once
 
 #include "ofMain.h"
 #include "ofxAnimatableFloat.h"
@@ -16,8 +15,10 @@ class SuperSphere : public ofSpherePrimitive {
 public:
     void draw() {
         ofPushMatrix();
+        ofPushStyle();
         rotate(currentRotation);
         ofSpherePrimitive::draw();
+        ofPopStyle();
         ofPopMatrix();
     }
     void rotateTo(ofVec3f target) {
@@ -26,8 +27,13 @@ public:
     }
 private:
     void rotate(ofVec3f target) { 
-        ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
-        ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
+        std::stringstream ss;
+        ss << target;
+        ofSetWindowTitle(ss.str());
+        if (fabs(target.x) > 16.0)
+            ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
+        if (fabs(target.y) > 16.0)
+            ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
         ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
     }
     ofVec3f currentRotation;
@@ -187,7 +193,7 @@ private:
             ofSetFrameRate(fps);
 
             animator.reset(0.0f);
-            animator.setDuration(2.0f);
+            animator.setDuration(1.0f);
             animator.setRepeatType(LOOP);
             animator.setCurve(LINEAR);
 
@@ -231,7 +237,7 @@ private:
         void setAngle(ofVec3f target) {
             //path.append(ofVec3f(calc(target.y, imgWidth), calc(target.x, imgHeight)));
             //sphere.rotateTo(ofVec3f(calc(target.y, -25.0f, 45.0f, imgWidth), calc(target.x, -40.0f, 45.0f, imgHeight)));
-            sphere.rotateTo(ofVec3f(0, calc(imgWidth-target.x, -30.0f, 30.0f, imgHeight)));
+             sphere.rotateTo(ofVec3f(calc(target.y, -25.0f, 45.0f, imgWidth), calc(imgWidth - target.x, -20.0f, 20.0f, imgHeight)));
         }
         void update() {
             float f = 1.0f / fps;
@@ -245,7 +251,7 @@ private:
                 ofDefaultVec3 target;
                 bool found = false;
                 for (auto& blob : contours.contourFinder.blobs) {
-                    if (blob.area > 400 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
+                    if (blob.area > 200 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
                         target = blob.centroid;
                         found = true;
                     }
@@ -322,10 +328,13 @@ private:
     public:
         void setup() {
             ofLight::setup();
-            setDiffuseColor(ofFloatColor(255.0, 0.0, 0.0f));
-            setSpecularColor(ofColor(0, 0, 255));
-            setDirectional();
-            setOrientation(ofVec3f(0.0f, -80.0f, 00.0f));
+            ////setDiffuseColor(ofColor::pink);
+            setAmbientColor(ofColor::mediumVioletRed);
+           // setSpecularColor(ofColor::saddleBrown);
+           setDirectional();
+            //setPosition(-200, 200, -2000);
+           setOrientation(ofVec3f(-200.0f, 300.0f, 00.0f));
+          // setPosition(0, 0, 2000);
         }
         void setOrientation(ofVec3f rot) {
             ofVec3f xax(1, 0, 0);
@@ -340,10 +349,10 @@ private:
     public:
         void setup() {
             setShininess(120);
-            setSpecularColor(ofColor::yellow);
-            setEmissiveColor(ofColor::blue);
-            setDiffuseColor(ofColor::sandyBrown);
-            setAmbientColor(ofColor::white);
+            setSpecularColor(ofColor::white);
+           // setEmissiveColor(ofColor::black);
+            setDiffuseColor(ofColor::whiteSmoke);
+            setAmbientColor(ofColor::navajoWhite);
         }
     };
     class Camera : public ofEasyCam {
@@ -363,6 +372,7 @@ class ofApp : public ofBaseApp{
         void setup() {
             ofSetWindowShape(ofGetScreenWidth(), ofGetScreenHeight());
             ofSetBackgroundColor(ofColor::black);
+            ofSetColor(ofColor::white);
             ofSetLogLevel(OF_LOG_NOTICE);
             ofLogToConsole();
             ofEnableLighting();
@@ -383,7 +393,7 @@ class ofApp : public ofBaseApp{
             // light.setPosition(0, 0, eyeAnimator.camera.getCurrentValue() - 1500);
             // debug helper
             std::stringstream ss;
-            ss << camera.getDistance();
+            //ss << camera.getDistance();
             ofSetWindowTitle(ss.str());
         }
 
@@ -402,7 +412,6 @@ class ofApp : public ofBaseApp{
             eyeAnimator.contours.draw(ofGetScreenWidth(), ofGetScreenHeight());
             material.end();
             light.disable();
-
             ofPopStyle();
             ofPopMatrix();
         }
