@@ -1,4 +1,4 @@
- #pragma once
+ #pragma nce
 
 #include "ofMain.h"
 #include "ofxAnimatableFloat.h"
@@ -7,17 +7,154 @@
 #include "ofxAnimatableQueue.h"
 #include "ofxOpenCv.h"
 
+#include "ofxAssimpModelLoader.h"
+
 const int imgWidth = 640;// 320; // the motion image from the camera
 const int imgHeight = 480;//240;
+
+class myEye : public ofxAssimpModelLoader {
+public:
+    void draw(ofPolyRenderMode renderType) {
+        if (scene == NULL) {
+            return;
+        }
+
+        ofPushStyle();
+
+        ofPushMatrix();
+        ofMultMatrix(modelMatrix);
+
+#ifndef TARGET_OPENGLES
+        glPolygonMode(GL_FRONT_AND_BACK, ofGetGLPolyMode(renderType));
+#endif
+        ofRotateDeg(180.0f, 0.0f, 1.0f, 0.0f);
+        for (size_t i = 0; i < modelMeshes.size(); i++) {
+            ofxAssimpMeshHelper & mesh = modelMeshes[i];
+            // item 2 needs to move 2*r in the Z
+            if (i != 1) { //1 may be good enough (2 is pupil)
+                ofRotateDeg(180.0f, 0.0f, 1.0f, 0.0f);
+                // ofTranslate(0.0, 0.0, 100);
+                // item 2 needs to move 2*r in the Z
+            }
+
+            ofPushMatrix();
+            ofMultMatrix(mesh.matrix);
+
+            if (bUsingTextures) {
+                if (mesh.hasTexture()) {
+                    mesh.getTextureRef().bind();
+                }
+            }
+
+            if (bUsingMaterials) {
+                mesh.material.begin();
+            }
+
+            if (mesh.twoSided) {
+                glEnable(GL_CULL_FACE);
+            }
+            else {
+                glDisable(GL_CULL_FACE);
+            }
+
+            ofEnableBlendMode(mesh.blendMode);
+
+#ifndef TARGET_OPENGLES
+            mesh.vbo.drawElements(GL_TRIANGLES, mesh.indices.size());
+#else
+            switch (renderType) {
+            case OF_MESH_FILL:
+                mesh.vbo.drawElements(GL_TRIANGLES, mesh.indices.size());
+                break;
+            case OF_MESH_WIREFRAME:
+                //note this won't look the same as on non ES renderers.
+                //there is no easy way to convert GL_TRIANGLES to outlines for each triangle
+                mesh.vbo.drawElements(GL_LINES, mesh.indices.size());
+                break;
+            case OF_MESH_POINTS:
+                mesh.vbo.drawElements(GL_POINTS, mesh.indices.size());
+                break;
+        }
+#endif
+
+            if (bUsingTextures) {
+                if (mesh.hasTexture()) {
+                    mesh.getTextureRef().unbind();
+                }
+            }
+
+            if (bUsingMaterials) {
+                mesh.material.end();
+            }
+
+            ofPopMatrix();
+    }
+
+#ifndef TARGET_OPENGLES
+        //set the drawing mode back to FILL if its drawn the model with a different mode.
+        if (renderType != OF_MESH_FILL) {
+            glPolygonMode(GL_FRONT_AND_BACK, ofGetGLPolyMode(OF_MESH_FILL));
+        }
+#endif
+
+        ofPopMatrix();
+        ofPopStyle();
+}
+
+};
 
 // always knows it rotation coordindates
 class SuperSphere : public ofSpherePrimitive {
 public:
+    void setup() {
+        //rotateDeg(180.0f, 0.0f, 1.0f, 0.0f); // flip to front to hide seam
+        //setResolution(25);
+        //setRadius(std::min(ofGetWidth(), ofGetHeight()));
+
+        model.loadModel("eyeball.obj");//
+    }
+    void update() {
+        model.update();
+    }
     void draw() {
+        ofSetColor(255);
+
+        ofEnableBlendMode(OF_BLENDMODE_ALPHA);
+
+        ofEnableDepthTest();
+#ifndef TARGET_PROGRAMMABLE_GL
+        glShadeModel(GL_SMOOTH); //some model / light stuff
+#endif
+
+        model.draw(OF_MESH_FILL);
+#ifndef TARGET_PROGRAMMABLE_GL
+        glEnable(GL_NORMALIZE);
+#endif
         ofPushMatrix();
-        ofPushStyle();
+
+        ofxAssimpMeshHelper & meshHelper = model.getMeshHelper(0);
+
+        ofMultMatrix(model.getModelMatrix());
+        ofMultMatrix(meshHelper.matrix);
+
+        ofMaterial & material = meshHelper.material;
+        if (meshHelper.hasTexture()) {
+            meshHelper.getTextureRef().bind();
+        }
+        material.begin();
+        model.drawFaces();
+        material.end();
+        if (meshHelper.hasTexture()) {
+            meshHelper.getTextureRef().unbind();
+        }
+        ofPopMatrix();
+
+        return;
+
         rotate(currentRotation);
-        ofSpherePrimitive::draw();
+        //ofSpherePrimitive::draw();
+        float r = getRadius();
+        //ofTranslate(0, 0, 5000);
         ofPopStyle();
         ofPopMatrix();
     }
@@ -26,13 +163,14 @@ public:
        currentRotation = target;
     }
 private:
+    myEye model;
     void rotate(ofVec3f target) { 
         std::stringstream ss;
         ss << target;
         ofSetWindowTitle(ss.str());
-        if (fabs(target.x) > 16.0)
+       // if (fabs(target.x) > 16.0)
             ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
-        if (fabs(target.y) > 16.0)
+        //if (fabs(target.y) > 16.0)
             ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
         ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
     }
@@ -189,9 +327,8 @@ private:
     public:
         const float fps = 60.0f;
         void setup() {
-
             ofSetFrameRate(fps);
-
+            
             animator.reset(0.0f);
             animator.setDuration(1.0f);
             animator.setRepeatType(LOOP);
@@ -210,10 +347,8 @@ private:
 
             contours.setup();
             startPlaying();
+            sphere.setup();
 
-            sphere.rotateDeg(180.0f, 0.0f, 1.0f, 0.0f); // flip to front
-            sphere.setResolution(25);
-            sphere.setRadius(std::min(ofGetWidth(), ofGetHeight()));
         }
         // convert point on X to a rotation
         float turnToX(float x) {
@@ -240,7 +375,9 @@ private:
              sphere.rotateTo(ofVec3f(calc(target.y, -25.0f, 45.0f, imgWidth), calc(imgWidth - target.x, -20.0f, 20.0f, imgHeight)));
         }
         void update() {
+            
             float f = 1.0f / fps;
+            sphere.update();
             animator.update(f);
             color.update(f);
             camera.update(f);
@@ -251,7 +388,7 @@ private:
                 ofDefaultVec3 target;
                 bool found = false;
                 for (auto& blob : contours.contourFinder.blobs) {
-                    if (blob.area > 200 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
+                    if (blob.area > 100 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
                         target = blob.centroid;
                         found = true;
                     }
@@ -260,9 +397,9 @@ private:
                     setAngle(target);
                 }
             }
-            for (ofImage& image : images) {
-                image.update(); // keep updated
-            }
+            //for (ofTexture& image : images) {
+              //  image.update(); // keep updated
+           // }
         }
         void scale() {
             //ofScale(1.0f, 1.0f, 1.0f); // a bit oblong i figure
@@ -289,15 +426,18 @@ private:
             animator.animateTo(images.size());
         }
         void add(const std::string &name) {
-            ofImage image;
-            if (image.load(name)) {
+            ofTexture image;
+            if (ofLoadImage(image, name)) {
+                image.generateMipmap();
+                image.setTextureMinMagFilter(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
+
                 images.push_back(image);
             }
         }
-        void add(ofImage image) {
+        void add(ofTexture image) {
             images.push_back(image);
         }
-        ofImage& getImage() {
+        ofTexture& getImage() {
             return images[getIndex()];
         }
         int getIndex() {
@@ -305,12 +445,11 @@ private:
         }
         // allow for various eyes
         void unbind() {
-            getImage().getTexture().unbind();
+            getImage().unbind();
         }
         void bind() {
-            color.applyCurrentColor();
-            //ofRotateZDeg(180.0);
-            getImage().getTexture().bind();
+            //color.applyCurrentColor();
+            getImage().bind();
         }
         ContoursBuilder contours;
         ofxAnimatableFloat camera;
@@ -320,7 +459,7 @@ private:
         SuperSphere sphere; //ofSpherePrimitive
 
     private:
-        std::vector<ofImage> images;
+        std::vector<ofTexture> images;
     };
 
 
@@ -329,11 +468,11 @@ private:
         void setup() {
             ofLight::setup();
             ////setDiffuseColor(ofColor::pink);
-            setAmbientColor(ofColor::mediumVioletRed);
+            //setAmbientColor(ofColor::mediumVioletRed);
            // setSpecularColor(ofColor::saddleBrown);
-           setDirectional();
+           //setDirectional();
             //setPosition(-200, 200, -2000);
-           setOrientation(ofVec3f(-200.0f, 300.0f, 00.0f));
+          // setOrientation(ofVec3f(-200.0f, 300.0f, 00.0f));
           // setPosition(0, 0, 2000);
         }
         void setOrientation(ofVec3f rot) {
@@ -369,11 +508,13 @@ class ofApp : public ofBaseApp{
         Camera camera;
         ImageAnimator eyeAnimator;
         Material material;
+        ofMesh m;
         void setup() {
+            ofEnableSeparateSpecularLight();
             ofSetWindowShape(ofGetScreenWidth(), ofGetScreenHeight());
             ofSetBackgroundColor(ofColor::black);
             ofSetColor(ofColor::white);
-            ofSetLogLevel(OF_LOG_NOTICE);
+            ofSetLogLevel(OF_LOG_VERBOSE);
             ofLogToConsole();
             ofEnableLighting();
             ofEnableDepthTest();
@@ -382,6 +523,7 @@ class ofApp : public ofBaseApp{
             ofSetSmoothLighting(true);
             ofDisableAlphaBlending();
             camera.setup();
+            camera.lookAt(eyeAnimator.sphere);
             eyeAnimator.setup();
             light.setup();
             material.setup();
@@ -396,13 +538,12 @@ class ofApp : public ofBaseApp{
             //ss << camera.getDistance();
             ofSetWindowTitle(ss.str());
         }
-
+        
         //--------------------------------------------------------------
         void draw() {
             ofPushStyle();
-
             light.enable();
-            material.begin();
+            //material.begin();
             camera.begin();
             ofPushMatrix();
             ofTranslate((ofGetWidth() / 2) - eyeAnimator.sphere.getRadius(), ofGetHeight() / 2 - eyeAnimator.sphere.getRadius()/2, 0);
@@ -410,7 +551,7 @@ class ofApp : public ofBaseApp{
             ofPopMatrix();
             camera.end();
             eyeAnimator.contours.draw(ofGetScreenWidth(), ofGetScreenHeight());
-            material.end();
+            //material.end();
             light.disable();
             ofPopStyle();
             ofPopMatrix();
