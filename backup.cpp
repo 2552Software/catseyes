@@ -124,7 +124,8 @@ public:
 // always knows it rotation coordindates
 class SuperSphere : public ofSpherePrimitive {
 public:
-    SuperSphere() {}
+    const int maxListSize = 100;
+
     void setup(const string&name, const string&blinkPath) {
         blinkingEnabled = true;
         eye.setup(name);
@@ -176,8 +177,8 @@ private:
 
 class ofxAnimatableQueueofVec3f {
 public:
-    ofxAnimatableQueueofVec3f() {
-    }
+    const int maxListSize = 100;
+
     void setup() {
         startPlaying();
     }
@@ -202,21 +203,23 @@ public:
         if (targetValue.getCurrentPosition().x == 0) {
             int i = 0;
         }
-        if (animSteps.size() > 100) {
-            ofLogNotice() << " cap list size to 100 ";
+        if (animSteps.size() > maxListSize) {
+            ofLogNotice() << " cap list size to maxListSize " << maxListSize;
             animSteps.pop_back(); // only keep the  most recent
         }
         animSteps.push_back(targetValue);//bugbug go to pointer
     }
     void insertTransition(ofxAnimatableOfPoint targetValue, bool forceNext) {
-        ofLogNotice() << "insertTransition " << targetValue.getCurrentPosition();
-        if (animSteps.size() > 100) { // make const
-            ofLogNotice() << " cap list size to 100 ";
-            animSteps.pop_back(); // only keep the  most recent
-        }
-        animSteps.push_front(targetValue);//bugbug go to pointer
         if (forceNext) {
-            currentAnimation = animSteps.front(); // skip to next one
+            currentAnimation = targetValue; // make this one current, drop the current one
+        }
+        else {
+            ofLogNotice() << "insertTransition " << targetValue.getCurrentPosition();
+            if (animSteps.size() > maxListSize) { // make const
+                ofLogNotice() << " cap list size to maxListSize " << maxListSize;
+                animSteps.pop_back(); // only keep the  most recent
+            }
+            animSteps.push_front(targetValue);//bugbug go to pointer
         }
     }
     bool hasFinishedAnimating() {
