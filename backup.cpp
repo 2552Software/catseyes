@@ -158,12 +158,7 @@ public:
             blinker.animateToAfterDelay(blink.size() - 1, ofRandom(5));
         }
     }
-    void scale() {
-        //ofScale(1.0f, 1.0f, 1.0f); // a bit oblong i figure
-    }
     void draw() {
-        scale();
-        rotate();
         int index = 0; // the non blink index
         if (blinkingEnabled) {
             index = blinker.getCurrentValue();
@@ -172,26 +167,8 @@ public:
         ofSpherePrimitive::draw();
         blink[index].stop();
     }
-    void set(ofVec3f target) {
-        ofLogNotice() << "rotateTo " << target;
-       currentRotation = target;
-    }
-    void rotate() {
-        rotate(currentRotation);
-    }
     bool blinkingEnabled;
 private:
-    void rotate(ofVec3f target) {
-        std::stringstream ss;
-        //ss << target;
-        //ofSetWindowTitle(ss.str());
-       // if (fabs(target.x) > 16.0)
-            ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
-        //if (fabs(target.y) > 16.0)
-            ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
-        ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
-    }
-    ofVec3f currentRotation;
     Eye eye; 
     std::vector<Eye> blink;
     ofxAnimatableFloat blinker; // blink animation
@@ -231,6 +208,17 @@ public:
         }
         animSteps.push_back(targetValue);//bugbug go to pointer
     }
+    void insertTransition(ofxAnimatableOfPoint targetValue, bool forceNext) {
+        ofLogNotice() << "insertTransition " << targetValue.getCurrentPosition();
+        if (animSteps.size() > 100) { // make const
+            ofLogNotice() << " cap list size to 100 ";
+            animSteps.pop_back(); // only keep the  most recent
+        }
+        animSteps.push_front(targetValue);//bugbug go to pointer
+        if (forceNext) {
+            currentAnimation = animSteps.front(); // skip to next one
+        }
+    }
     bool hasFinishedAnimating() {
         return currentAnimation.hasFinishedAnimating();
     }
@@ -251,7 +239,6 @@ public:
         targetPoint.setCurve(LINEAR);
         addTransition(targetPoint);
     }
-
     void startPlaying() {
         playing = true;
     }
@@ -264,7 +251,7 @@ private:
 };
 
 
-    class ContoursBuilder {
+class ContoursBuilder {
     public:
         void setup() {
             vector<ofVideoDevice> devices = video.listDevices();
@@ -341,7 +328,7 @@ private:
         ofxCvGrayscaleImage grayImage, backgroundImage, grayDiff;
     };
 
-    class ImageAnimator {
+class ImageAnimator {
     public:
         void setup() {
             ofSetFrameRate(60.0f);
@@ -377,23 +364,17 @@ private:
             ofLogNotice() << "result " << result << " source " << val << " of " << len;
             return result;
         }
-        void setAngle(ofVec3f target) {
-            //path.append(ofVec3f(calc(target.y, imgWidth), calc(target.x, imgHeight)));
-            //sphere.rotateTo(ofVec3f(calc(target.y, -25.0f, 45.0f, imgWidth), calc(target.x, -40.0f, 45.0f, imgHeight)));
-            for (SuperSphere&eye : eyes) {
-                eye.set(ofVec3f(calc(target.y, -25.0f, 45.0f, imgWidth), calc(imgWidth - target.x, -20.0f, 20.0f, imgHeight)));
-            }
-        }
         void circle() {
             ofxAnimatableOfPoint point;
+            point.setPosition(currentLocation);
             point.setDuration(0.20f);
-            point.animateTo(ofVec3f(1000, 1000));
+            point.animateTo(ofVec3f(1000, 1000, 10));
             path.addTransition(point);
-            point.animateTo(ofVec3f(1000, 2000));
+            point.animateTo(ofVec3f(1000, 2000,200));
             path.addTransition(point);
-            point.animateTo(ofVec3f(2000, 2000));
+            point.animateTo(ofVec3f(2000, 2000, -200));
             path.addTransition(point);
-            point.animateTo(ofVec3f(1000, 1000));
+            point.animateTo(ofVec3f(1000, 1000,3000));
             path.addTransition(point);
             point.animateTo(ofVec3f(00, 00));
             path.addTransition(point);
@@ -412,6 +393,7 @@ private:
             rotator.update();
             if (rotator.hasFinishedAnimating()) {
                 ofxAnimatableOfPoint point;
+                point.setPosition(currentRotation);
                 point.animateTo(ofVec3f(ofRandom(90.0f), ofRandom(90.0f)));
                 rotator.addTransition(point);
             }
@@ -419,7 +401,7 @@ private:
             float max = 0.0f;
             contours.update();
             if (contours.contourFinder.blobs.size() > 0) {
-                ofDefaultVec3 target;
+                ofVec3f target(0.0f, 0.0f, 0.0f);
                 bool found = false;
                 for (auto& blob : contours.contourFinder.blobs) {
                     if (blob.area > 100 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
@@ -428,7 +410,14 @@ private:
                     }
                 }
                 if (found) {
-                    setAngle(target);
+                    ofxAnimatableOfPoint point;
+                    // get the current point -- smooth things out
+                    point.setPosition(currentLocation);
+                    point.setCurve(LINEAR);
+                    point.setRepeatType(PLAY_ONCE);
+                    point.setDuration(0.2f);
+                    point.animateTo(target);
+                    rotator.insertTransition(point, true);
                 }
             }
         }
@@ -441,18 +430,16 @@ private:
             getCurrentEyeRef().blinkingEnabled = true; // only blink when eye is not doing interesting things
             // move all eyes so when they switch things are current
             if (!path.hasFinishedAnimating()) {
-                for (SuperSphere&eye : eyes) {
-                    eye.setPosition(path.getPoint());
-                }
+                currentLocation = path.getPoint();
                 getCurrentEyeRef().blinkingEnabled = false;
             }
             // roate current eye as needed
             if (!rotator.hasFinishedAnimating()) {
-                for (SuperSphere&eye : eyes) {
-                    eye.set(rotator.getPoint());
-                }
-                getCurrentEyeRef().blinkingEnabled = false;
+                currentRotation = rotator.getPoint();
             }
+            getCurrentEyeRef().setPosition(currentLocation);
+            rotate(currentRotation);
+
             getCurrentEyeRef().draw();
         }
         void startPlaying() {
@@ -483,12 +470,24 @@ private:
             eyes[eyes.size()-1].setup(name, blinkPath);
         }
         ContoursBuilder contours;
+
+    private:
+        void rotate(const ofVec3f& target) {
+            std::stringstream ss;
+            //ss << target;
+            //ofSetWindowTitle(ss.str());
+           // if (fabs(target.x) > 16.0)
+            ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
+            //if (fabs(target.y) > 16.0)
+            ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
+            ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
+        }
         ofxAnimatableFloat animatorIndex;
         ofxAnimatableQueueofVec3f rotator;
         ofxAnimatableQueueofVec3f path; // path of image
-
-    private:
         std::vector<SuperSphere> eyes;
+        ofVec3f currentLocation;
+        ofVec3f currentRotation;
     };
 
 
