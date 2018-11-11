@@ -164,9 +164,13 @@ public:
     void draw() {
         scale();
         rotate();
-        blink[blinker.getCurrentValue()].start();
+        int index = 0; // the non blink index
+        if (blinkingEnabled) {
+            index = blinker.getCurrentValue();
+        }
+        blink[index].start();
         ofSpherePrimitive::draw();
-        blink[blinker.getCurrentValue()].stop();
+        blink[index].stop();
     }
     void set(ofVec3f target) {
         ofLogNotice() << "rotateTo " << target;
