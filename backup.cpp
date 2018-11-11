@@ -126,6 +126,7 @@ class SuperSphere : public ofSpherePrimitive {
 public:
     SuperSphere() {}
     void setup(const string&name, const string&blinkPath) {
+        blinkingEnabled = true;
         eye.setup(name);
         string path = DATAPATH;
         path += "\\"+ blinkPath +".blink";
@@ -162,8 +163,8 @@ public:
     }
     void draw() {
         scale();
-        blink[blinker.getCurrentValue()].start();
         rotate();
+        blink[blinker.getCurrentValue()].start();
         ofSpherePrimitive::draw();
         blink[blinker.getCurrentValue()].stop();
     }
@@ -174,6 +175,7 @@ public:
     void rotate() {
         rotate(currentRotation);
     }
+    bool blinkingEnabled;
 private:
     void rotate(ofVec3f target) {
         std::stringstream ss;
@@ -432,17 +434,20 @@ private:
             }
         }
         void draw() {
+            getCurrentEyeRef().blinkingEnabled = true; // only blink when eye is not doing interesting things
             // move all eyes so when they switch things are current
             if (!path.hasFinishedAnimating()) {
                 for (SuperSphere&eye : eyes) {
                     eye.setPosition(path.getPoint());
                 }
+                getCurrentEyeRef().blinkingEnabled = false;
             }
             // roate current eye as needed
             if (!rotator.hasFinishedAnimating()) {
                 for (SuperSphere&eye : eyes) {
                     eye.set(rotator.getPoint());
                 }
+                getCurrentEyeRef().blinkingEnabled = false;
             }
             getCurrentEyeRef().draw();
         }
