@@ -154,7 +154,7 @@ public:
         blinker.update(1.0f / ofGetTargetFrameRate());
         if (!blinker.isOrWillBeAnimating()) {
             blinker.reset(0.0f);
-            blinker.animateToAfterDelay(blink.size() - 1, ofRandom(100));
+            blinker.animateToAfterDelay(blink.size() - 1, ofRandom(5));
         }
     }
     void scale() {
@@ -346,6 +346,7 @@ private:
             animatorIndex.setCurve(LINEAR);
 
             path.setup();
+            rotator.setup();
 
             contours.setup();
             startPlaying();
@@ -390,6 +391,7 @@ private:
             path.addTransition(point);
             point.animateTo(ofVec3f(00, 00));
             path.addTransition(point);
+
         }
         void update() {
             for (SuperSphere&eye : eyes) {
@@ -400,6 +402,12 @@ private:
             path.update();
             if (path.hasFinishedAnimating()) {
                 circle();
+            }
+            rotator.update();
+            if (rotator.hasFinishedAnimating()) {
+                ofxAnimatableOfPoint point;
+                point.animateTo(ofVec3f(ofRandom(90.0f), ofRandom(90.0f)));
+                rotator.addTransition(point);
             }
 
             float max = 0.0f;
@@ -424,12 +432,17 @@ private:
             }
         }
         void draw() {
-            std::stringstream ss;
-            ss << path.getPoint();
-            ofSetWindowTitle(ss.str());
-
+            // move all eyes so when they switch things are current
             if (!path.hasFinishedAnimating()) {
-                getCurrentEyeRef().setPosition(path.getPoint());
+                for (SuperSphere&eye : eyes) {
+                    eye.setPosition(path.getPoint());
+                }
+            }
+            // roate current eye as needed
+            if (!rotator.hasFinishedAnimating()) {
+                for (SuperSphere&eye : eyes) {
+                    eye.set(rotator.getPoint());
+                }
             }
             getCurrentEyeRef().draw();
         }
@@ -462,6 +475,7 @@ private:
         }
         ContoursBuilder contours;
         ofxAnimatableFloat animatorIndex;
+        ofxAnimatableQueueofVec3f rotator;
         ofxAnimatableQueueofVec3f path; // path of image
 
     private:
@@ -498,6 +512,7 @@ class ofApp : public ofBaseApp{
         //--------------------------------------------------------------
         void update() {
             eyeAnimator.update();
+            light.update();
             //too much only use when needed camera.setDistance(eyeAnimator.camera.getCurrentValue());
             // light.setPosition(0, 0, eyeAnimator.camera.getCurrentValue() - 1500);
             // debug helper
