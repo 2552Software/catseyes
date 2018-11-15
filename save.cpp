@@ -1,10 +1,122 @@
-#include <windows.h>
+ #include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
+#include <stdio.h>
+#include <string.h>         // For wcslen()
+#include <memory>           // For std::unique_ptr
+#include <stdexcept>        // For std::runtime_error
+#include <string>           // For std::wstring
+#include <utility>          // For std::pair, std::swap
+#include <vector>           // For std::vector
+#include <direct.h>  
 #include "ofApp.h"
 #include "ofxXmlPoco.h"
 #pragma comment(lib, "Netapi32.lib")
+#pragma comment(lib, "Mincore.lib")
+
+void postError(const std::wstring& error, DWORD e) {
+    MessageBoxW(nullptr, error.c_str(), L"Error!\0", MB_ICONEXCLAMATION | MB_OK);
+}
+void postMessage(const std::wstring& message) {
+    MessageBoxW(nullptr, message.c_str(), L"Message\0", MB_ICONINFORMATION | MB_OK);
+}
+int askQuestion(const std::wstring& question) {
+    return MessageBoxW(nullptr, question.c_str(), L"Question\0", MB_ICONQUESTION | MB_YESNO);
+}
+
+std::wstring RegistryGetString(HKEY    key, PCWSTR  subKey,  PCWSTR  valueName){
+    //
+    // Try getting the size of the string value to read,
+    // to properly allocate a buffer for the string
+    //
+    DWORD keyType = 0;
+    DWORD dataSize = 0;
+    const DWORD flags = RRF_RT_REG_SZ; // Only read strings (REG_SZ)
+    LONG result = ::RegGetValueW(key, subKey, valueName, flags, &keyType, nullptr, &dataSize);
+    if (result != ERROR_SUCCESS)    {
+        //ERROR_FILE_NOT_FOUND ERROR_UNSUPPORTED_TYPE
+        return L"";
+    }
+    WCHAR* data = new WCHAR[dataSize / sizeof(WCHAR) + sizeof(WCHAR)];
+    memset(data, 0, sizeof(data));
+    result = ::RegGetValueW(key, subKey, valueName, flags, nullptr, data, &dataSize);
+    if (result != ERROR_SUCCESS)    {
+        return L"";
+    }
+    std::wstring text = data;
+    delete[] data;
+    return text;
+}
+
+std::wstring GetInstallPath(){
+    std::wstring location = RegistryGetString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Office\\ClickToRun\\REGISTRY\\MACHINE\\Software\\Wow6432Node\\Microsoft\\Office\\16.0\\Common\\InstallRoot", L"Path");
+    if (location.size() > 0) {
+        return location;
+    }
+    return RegistryGetString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Office\\ClickToRun\\REGISTRY\\MACHINE\\Software\\Wow6432Node\\Microsoft\\Office\\15.0\\Common\\InstallRoot", L"Path");
+}
+
+typedef BOOL(WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+LPFN_ISWOW64PROCESS fnIsWow64Process;
+
+BOOL IsWow64(){
+    BOOL bIsWow64 = FALSE;
+
+    //IsWow64Process is not available on all supported versions of Windows.
+    //Use GetModuleHandle to get a handle to the DLL that contains the function
+    //and GetProcAddress to get a pointer to the function if available.
+
+    fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
+        GetModuleHandle(TEXT("kernel32")), "IsWow64Process");
+
+    if (NULL != fnIsWow64Process)    {
+        if (!fnIsWow64Process(GetCurrentProcess(), &bIsWow64))        {
+            // Handle error...
+        }
+    }
+    return bIsWow64;
+}
+
+void fileVersion(const std::wstring& filePath, uint16_t& major, uint16_t& minor, uint16_t& revision, uint16_t& build) {
+    DWORD  verHandle = 0;
+    UINT   size = 0;
+    LPBYTE lpBuffer = NULL;
+    DWORD  verSize = GetFileVersionInfoSize(filePath.c_str(), &verHandle);
+
+    if (verSize != NULL)    {
+        WCHAR* verData = new WCHAR[verSize];
+        if (GetFileVersionInfoW(filePath.c_str(), verHandle, verSize, verData))        {
+            if (VerQueryValueW(verData, L"\\", (VOID FAR* FAR*)&lpBuffer, &size))            {
+                if (size)                {
+                    VS_FIXEDFILEINFO *verInfo = (VS_FIXEDFILEINFO *)lpBuffer;
+                    if (verInfo->dwSignature == 0xfeef04bd)                    {
+                        // Doesn't matter if you are on 32 bit or 64 bit,
+                        // DWORD is always 32 bits, so first two revision numbers
+                        // come from dwFileVersionMS, last two come from dwFileVersionLS
+                        if (IsWow64()) {
+                            // 64 bit build
+                            major = (verInfo->dwProductVersionMS >> 16) & 0xffff;
+                            minor = (verInfo->dwProductVersionMS >> 0) & 0xffff;
+                            revision = (verInfo->dwProductVersionLS >> 16) & 0xffff;
+                            build = (verInfo->dwProductVersionLS >> 0) & 0xffff;
+                        }
+                        else {
+                            // 32 bit build
+                            major = HIWORD(verInfo->dwProductVersionMS);
+                            minor = LOWORD(verInfo->dwProductVersionMS);
+                            revision = HIWORD(verInfo->dwProductVersionLS);
+                            build = LOWORD(verInfo->dwProductVersionLS);
+                        }
+                    }
+                }
+            }
+        }
+        delete[] verData;
+    }
+
+}
+
 /*
  Run Setup (exe file) to install VBA macros and run below steps after completing the setup.
 
@@ -27,260 +139,6 @@
 1) Go to Insert > Click on "My Add-ins" > Go to "SHARED FOLDER" tab > Select Contiq plugin and click Add.
 
 */
-std::string getXML() {
-    std::string xml = "< ? xml version = \"1.0\" encoding = \"utf - 8\" ? >";
-    return xml;
-    /*
-        <!--Published:70EDFC97 - B41D - 43C5 - B751 - 7C00AD999804-->
-        <!--Created:ce44715c - 8c4e - 446b - 879c - ea9ebe0f09c8-->
-        <OfficeApp xmlns = "http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi = "http://www.w3.org/2001/XMLSchema-instance" xmlns : bt = "http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns : ov = "http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi : type = "TaskPaneApp">
-
-        <!--Begin Basic Settings : Add - in metadata, used for all versions of Office unless override provided. -->
-
-        <!--IMPORTANT!Id must be unique for your add - in, if you reuse this manifest ensure that you change this id to a new GUID. -->
-        < Id>78841981 - 1345 - 488a - b421 - 805271f60630< / Id>
-
-        <!--Version.Updates from the store only get triggered if there is a version change. -->
-        <Version>1.0.0.0< / Version>
-        <ProviderName>Contiq< / ProviderName>
-        <DefaultLocale>en - US< / DefaultLocale>
-        <!--The display name of your add - in.Used on the store and various places of the Office UI such as the add - ins dialog. -->
-        <DisplayName DefaultValue = "Contiq Companion Beta" / >
-        <Description DefaultValue = "Contiq Companion Beta" / >
-
-        <!--Icon for your add - in.Used on installation screens and the add - ins dialog. -->
-        <IconUrl DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button32x32.png" / >
-
-        <SupportUrl DefaultValue = "https://contiq.com/support/" / >
-
-        <!--Domains that will be allowed when navigating.For example, if you use ShowTaskpane and then have an href link, navigation will only be allowed if the domain is on this list. -->
-        <AppDomains>
-        <AppDomain>AppDomain1< / AppDomain>
-        <AppDomain>AppDomain2< / AppDomain>
-        <AppDomain>AppDomain3< / AppDomain>
-        < / AppDomains>
-        <!--End Basic Settings. -->
-
-        <!--Begin TaskPane Mode integration.This section is used if there are no VersionOverrides or if the Office client version does not support add - in commands. -->
-        <Hosts>
-        <Host Name = "Presentation" / >
-        < / Hosts>
-        <DefaultSettings>
-        <SourceLocation DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Home.html" / >
-        < / DefaultSettings>
-        <!--End TaskPane Mode integration.  -->
-
-        <Permissions>ReadWriteDocument< / Permissions>
-
-        <!--Begin Add - in Commands Mode integration. -->
-        <VersionOverrides xmlns = "http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type = "VersionOverridesV1_0">
-
-        <!--The Hosts node is required. -->
-        <Hosts>
-        <!--Each host can have a different set of commands. -->
-        <!--Excel host is Workbook, Word host is Document, and PowerPoint host is Presentation. -->
-        <!--Make sure the hosts you override match the hosts declared in the top section of the manifest. -->
-        <Host xsi : type = "Presentation">
-        <!--Form factor.Currently only DesktopFormFactor is supported. -->
-        <DesktopFormFactor>
-        <!--"This code enables a customizable message to be displayed when the add-in is loaded successfully upon individual install."-->
-        <GetStarted>
-        <!--Title of the Getting Started callout.resid points to a ShortString resource-->
-        <Title resid = "Contiq.GetStarted.Title" / >
-
-        <!--Description of the Getting Started callout.resid points to a LongString resource-->
-        <Description resid = "Contiq.GetStarted.Description" / >
-
-        <!--Point to a url resource which details how the add - in should be used. -->
-        <LearnMoreUrl resid = "Contiq.GetStarted.LearnMoreUrl" / >
-        < / GetStarted>
-        <!--Function file is a HTML page that includes the JavaScript where functions for ExecuteAction will be called.
-        Think of the FunctionFile as the code behind ExecuteFunction. -->
-        <FunctionFile resid = "Contiq.DesktopFunctionFile.Url" / >
-
-        <!--PrimaryCommandSurface is the main Office Ribbon. -->
-        <ExtensionPoint xsi : type = "PrimaryCommandSurface">
-        <!--Use OfficeTab to extend an existing Tab.Use CustomTab to create a new tab. -->
-        <OfficeTab id = "TabHome">
-        <!--Ensure you provide a unique id for the group.Recommendation for any IDs is to namespace using your company name. -->
-        <Group id = "Contiq.Group1">
-        <!--Label for your group.resid must point to a ShortString resource. -->
-        <Label resid = "Contiq.Group1Label" / >
-        <!--Icons.Required sizes 16, 32, 80, optional 20, 24, 40, 48, 64. Strongly recommended to provide all sizes for great UX. -->
-        <!--Use PNG icons.All URLs on the resources section must use HTTPS. -->
-        <Icon>
-        <bt:Image size = "16" resid = "Contiq.tpicon_16x16" / >
-        <bt:Image size = "20" resid = "Contiq.tpicon_20x20" / >
-        <bt:Image size = "24" resid = "Contiq.tpicon_24x24" / >
-        <bt:Image size = "32" resid = "Contiq.tpicon_32x32" / >
-        <bt:Image size = "40" resid = "Contiq.tpicon_40x40" / >
-        <bt:Image size = "48" resid = "Contiq.tpicon_48x48" / >
-        <bt:Image size = "64" resid = "Contiq.tpicon_64x64" / >
-        <bt:Image size = "80" resid = "Contiq.tpicon_80x80" / >
-        < / Icon>
-
-        <!--Control.It can be of type "Button" or "Menu". -->
-        <Control xsi : type = "Button" id = "Contiq.TaskpaneButton">
-        <Label resid = "Contiq.TaskpaneButton.Label" / >
-        <Supertip>
-        <!--ToolTip title.resid must point to a ShortString resource.-->
-        <Title resid = "Contiq.TaskpaneButton.ShortText" / >
-        <!--ToolTip description.resid must point to a LongString resource.-->
-        <Description resid = "Contiq.TaskpaneButton.Tooltip" / >
-        < / Supertip>
-        <Icon>
-        <bt:Image size = "16" resid = "Contiq.tpicon_16x16" / >
-        <bt:Image size = "20" resid = "Contiq.tpicon_20x20" / >
-        <bt:Image size = "24" resid = "Contiq.tpicon_24x24" / >
-        <bt:Image size = "32" resid = "Contiq.tpicon_32x32" / >
-        <bt:Image size = "40" resid = "Contiq.tpicon_40x40" / >
-        <bt:Image size = "48" resid = "Contiq.tpicon_48x48" / >
-        <bt:Image size = "64" resid = "Contiq.tpicon_64x64" / >
-        <bt:Image size = "80" resid = "Contiq.tpicon_80x80" / >
-        < / Icon>
-
-        <!--This is what happens when the command is triggered(E.g.click on the Ribbon).Supported actions are ExecuteFunction or ShowTaskpane.-->
-        <Action xsi : type = "ShowTaskpane">
-        <TaskpaneId>ButtonId1< / TaskpaneId>
-        <!--Provide a url resource id for the location that will be displayed on the task pane.-->
-        <SourceLocation resid = "Contiq.Taskpane.Url" / >
-        < / Action>
-        < / Control>
-        <!--Control.It can be of type "Button" or "Menu".-->
-        <!--<Control xsi : type = "Button" id = "Contiq.TaskpaneButton1">
-        <Label resid = "Contiq.TaskpaneButton1.Label" / >
-        <Supertip>
-        --><!--ToolTip title.resid must point to a ShortString resource.--><!--
-        <Title resid = "Contiq.TaskpaneButton1.Label" / >
-        --><!--ToolTip description.resid must point to a LongString resource.--><!--
-        <Description resid = "Contiq.TaskpaneButton1.Tooltip" / >
-        < / Supertip>
-        <Icon>
-        <bt:Image size = "16" resid = "Contiq.tpicon_16x16" / >
-        <bt:Image size = "20" resid = "Contiq.tpicon_20x20" / >
-        <bt:Image size = "24" resid = "Contiq.tpicon_24x24" / >
-        <bt:Image size = "32" resid = "Contiq.tpicon_32x32" / >
-        <bt:Image size = "40" resid = "Contiq.tpicon_40x40" / >
-        <bt:Image size = "48" resid = "Contiq.tpicon_48x48" / >
-        <bt:Image size = "64" resid = "Contiq.tpicon_64x64" / >
-        <bt:Image size = "80" resid = "Contiq.tpicon_80x80" / >
-        < / Icon>
-
-        --><!--This is what happens when the command is triggered(E.g.click on the Ribbon).Supported actions are ExecuteFunction or ShowTaskpane.--><!--
-        <Action xsi : type = "ExecuteFunction">
-        <FunctionName>publishDocument< / FunctionName>
-        <TaskpaneId>ButtonId1< / TaskpaneId>
-        Provide a url resource id for the location that will be displayed on the task pane.
-        <SourceLocation resid = "Contiq.Taskpane.Url" / >
-        < / Action>
-        < / Control>-->
-        < !--<Control xsi : type = "Menu" id = "ContiqDropDown">
-        <Label resid = "Contiq.TaskpaneMainButton.Label" / >
-        <Supertip>
-        <Title resid = "Contiq.TaskpaneButton.Label" / >
-        <Description resid = "Contiq.TaskpaneButton.Tooltip" / >
-        < / Supertip>
-        <Icon>
-        <bt:Image size = "16" resid = "Contiq.tpicon_16x16" / >
-        <bt:Image size = "20" resid = "Contiq.tpicon_20x20" / >
-        <bt:Image size = "24" resid = "Contiq.tpicon_24x24" / >
-        <bt:Image size = "32" resid = "Contiq.tpicon_32x32" / >
-        <bt:Image size = "40" resid = "Contiq.tpicon_40x40" / >
-        <bt:Image size = "48" resid = "Contiq.tpicon_48x48" / >
-        <bt:Image size = "64" resid = "Contiq.tpicon_64x64" / >
-        <bt:Image size = "80" resid = "Contiq.tpicon_80x80" / >
-        < / Icon>
-        <Items>
-        <Item id = "Contiq.TaskpaneButton">
-        <Label resid = "Contiq.TaskpaneButton.Label" / >
-        <Supertip>
-        <Title resid = "Contiq.TaskpaneButton.Label" / >
-        <Description resid = "Contiq.TaskpaneButton.Tooltip" / >
-        < / Supertip>
-        <Icon>
-        <bt:Image size = "16" resid = "Contiq.tpicon_16x16" / >
-        <bt:Image size = "20" resid = "Contiq.tpicon_20x20" / >
-        <bt:Image size = "24" resid = "Contiq.tpicon_24x24" / >
-        <bt:Image size = "32" resid = "Contiq.tpicon_32x32" / >
-        <bt:Image size = "40" resid = "Contiq.tpicon_40x40" / >
-        <bt:Image size = "48" resid = "Contiq.tpicon_48x48" / >
-        <bt:Image size = "64" resid = "Contiq.tpicon_64x64" / >
-        <bt:Image size = "80" resid = "Contiq.tpicon_80x80" / >
-        < / Icon>
-        <Action xsi : type = "ShowTaskpane">
-        <TaskpaneId>ButtonId1< / TaskpaneId>
-        <SourceLocation resid = "Contiq.Taskpane.Url" / >
-        < / Action>
-        < / Item>
-        <Item id = "Contiq.TaskpaneButton1">
-        <Label resid = "Contiq.TaskpaneButton1.Label" / >
-        <Supertip>
-        <Title resid = "Contiq.TaskpaneButton1.Label" / >
-        <Description resid = "Contiq.TaskpaneButton1.Tooltip" / >
-        < / Supertip>
-        <Icon>
-        <bt:Image size = "16" resid = "Contiq.tpicon_16x16" / >
-        <bt:Image size = "20" resid = "Contiq.tpicon_20x20" / >
-        <bt:Image size = "24" resid = "Contiq.tpicon_24x24" / >
-        <bt:Image size = "32" resid = "Contiq.tpicon_32x32" / >
-        <bt:Image size = "40" resid = "Contiq.tpicon_40x40" / >
-        <bt:Image size = "48" resid = "Contiq.tpicon_48x48" / >
-        <bt:Image size = "64" resid = "Contiq.tpicon_64x64" / >
-        <bt:Image size = "80" resid = "Contiq.tpicon_80x80" / >
-        < / Icon>
-        <Action xsi : type = "ExecuteFunction">
-        <FunctionName>publishDocument< / FunctionName>
-        < / Action>
-        < / Item>
-        < / Items>
-        < / Control>-- >
-        < / Group>
-        < / OfficeTab>
-        < / ExtensionPoint>
-        < / DesktopFormFactor>
-        < / Host>
-        < / Hosts>
-
-        <!--You can use resources across hosts and form factors. -->
-        <Resources>
-        <bt:Images>
-        <bt:Image id = "Contiq.tpicon_16x16" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button16x16.png" / >
-        <bt:Image id = "Contiq.tpicon_20x20" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button20x20.png" / >
-        <bt:Image id = "Contiq.tpicon_24x24" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button24x24.png" / >
-        <bt:Image id = "Contiq.tpicon_32x32" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button32x32.png" / >
-        <bt:Image id = "Contiq.tpicon_40x40" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button40x40.png" / >
-        <bt:Image id = "Contiq.tpicon_48x48" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button48x48.png" / >
-        <bt:Image id = "Contiq.tpicon_64x64" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button64x64.png" / >
-        <bt:Image id = "Contiq.tpicon_80x80" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Images/Button80x80.png" / >
-        < / bt:Images>
-        <bt:Urls>
-        <bt:Url id = "Contiq.DesktopFunctionFile.Url" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Functions/FunctionFile.html" / >
-        <bt:Url id = "Contiq.Taskpane.Url" DefaultValue = "https://dev.contiq.com/webaddin/PowerPoint/stage/Home.html" / >
-        <bt:Url id = "Contiq.GetStarted.LearnMoreUrl" DefaultValue = "https://go.microsoft.com/fwlink/?LinkId=276812" / >
-        < / bt:Urls>
-        <!--ShortStrings max characters == 125. -->
-        <bt:ShortStrings>
-        <bt:String id = "Contiq.TaskpaneMainButton.Label" DefaultValue = "Contiq" / >
-        <!--<bt:String id = "Contiq.TaskpaneButton.Label" DefaultValue = "Open Contiq" / >-->
-        <bt:String id = "Contiq.TaskpaneButton.Label" DefaultValue = "Contiq" / >
-        <bt:String id = "Contiq.TaskpaneButton.ShortText" DefaultValue = "Open Contiq" / >
-        <bt:String id = "Contiq.TaskpaneButton1.Label" DefaultValue = "Save to Contiq" / >
-        <bt:String id = "Contiq.Group1Label" DefaultValue = "Add-ins" / >
-        <bt:String id = "Contiq.GetStarted.Title" DefaultValue = "Get started with Contiq!" / >
-        < / bt:ShortStrings>
-        <!--LongStrings max characters == 250. -->
-        <bt:LongStrings>
-        <bt:String id = "Contiq.TaskpaneButton.Tooltip" DefaultValue = "Search and reuse slides from existing decks" / >
-        <bt:String id = "Contiq.TaskpaneButton1.Tooltip" DefaultValue = "Save this document at Contiq server." / >
-        <bt:String id = "Contiq.GetStarted.Description" DefaultValue = "Contiq add-in loaded successfully. Click on the logo above to open the add-in." / >
-        < / bt:LongStrings>
-        < / Resources>
-        < / VersionOverrides>
-        <!--End Add - in Commands Mode integration. -->
-        < / OfficeApp>
-            */
-
-}
 //--------------------------------------------------------------
 void ofApp::setup(){
 
@@ -289,46 +147,76 @@ void ofApp::setup(){
     ofSetColor(ofColor::white);
     ofSetLogLevel(OF_LOG_VERBOSE);
     ofLogToConsole();
-    HWND notepad;
+    uint16_t major, minor, revison, build;
 
+    //
+    std::wstring location = GetInstallPath();
+    if (location.size() > 0) {
+        location += L"POWERPNT.exe";
+        //major.minor.build.revision
+        fileVersion(location, major, minor, revison, build);
+        wcout << location << L" ver " << major << L"." << minor << L"." << revison << L"." << build;
+       _wchdir(location.c_str());
+    }
+    else {
+        postError(L"Powerpoint must be installed", 0);
+        return;
+    }
+    HWND ppt = nullptr;
     do {
         //https://stackoverflow.com/questions/2113950/how-to-send-keystrokes-to-a-window
-        notepad = FindWindow(_T("Notepad"), NULL);
-        if (!notepad) {
-            STARTUPINFO info = { sizeof(info) };
-            PROCESS_INFORMATION processInfo;
-            if (CreateProcessW(_T("powerpoint"), _T("cmd"), NULL, NULL, TRUE, 0, NULL, NULL, &info, &processInfo))        {
-                WaitForSingleObject(processInfo.hProcess, INFINITE);
-                CloseHandle(processInfo.hProcess);
-                CloseHandle(processInfo.hThread);
+        ppt = FindWindowW(NULL, _T("PowerPoint"));
+        wchar_t buf[128];
+        buf[0] = L'\0';
+        if (ppt) {
+            GetClassNameW(ppt, buf, 127); //PPTFrameClass do we need this?
+        }
+        // echo ppt version
+        //https://docs.microsoft.com/en-us/officeupdates/update-history-office-2019
+        if (!ppt) {
+            //Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Office\ClickToRun
+
+            //Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Office\ClickToRun\REGISTRY\MACHINE\Software\Wow6432Node\Microsoft\Office\16.0\Common\InstallRoot
+            /*V16_SAMEBIT_CTR - SOFTWARE\Microsoft\Office\ClickToRun\REGISTRY\MACHINE\Software\Microsoft\Office\16.0\Visio
+              V16X86_X64_CTR - SOFTWARE\Microsoft\Office\ClickToRun\REGISTRY\MACHINE\Software\Wow6432Node\Microsoft\Office\16.0\Visio
+            */
+            //C:\Program Files (x86)\Microsoft Office\root\Office16\POWERPNT.EXE
+            // ShellExecute needs COM to be initialized
+            CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+            
+            HINSTANCE h = ShellExecute(GetDesktopWindow(), L"open", L"POWERPNT.exe", L"data\\ppt1.pptx", 0, SW_SHOWNORMAL);
+            if ((int)h < 32) {
+                postMessage(L"Microsoft Powerpoint is not properly installed");
             }
-            else {
-                ofLogFatalError("CreateProcess") << "failed to create: " << _T("Notepad");
-                break;
-            }
+
+            CoUninitialize();
+
+        }
+        else {
+            postMessage(L"Please stop all instances of Microsoft Powerpoint");
         }
     } while (true);
     // loop look/ask user to close PowerPoint? https://docs.microsoft.com/en-gb/windows/desktop/ToolHelp/taking-a-snapshot-and-viewing-processes
 
-    HWND edit = FindWindowEx(notepad, NULL, _T("Edit"), NULL);
     //Bring the Notepad window to the front.
-    if (!SetForegroundWindow(notepad)) {
+    if (!SetForegroundWindow(ppt)) {
         ofLogFatalError("SetForegroundWindow") << "failed to create: " << _T("Notepad");
 
     }
-    SendMessage(edit, WM_SETTEXT, NULL, (LPARAM)_T("hello"));
+   // SendMessage(edit, WM_SETTEXT, NULL, (LPARAM)_T("hello"));
 
     ofDirectory dir("ContiqManifest");
     if (dir.create()) {
         ofLogNotice("ofDirectory") << "created: " << dir.path();
         ofFilePath file;
         ofxXmlPoco xml;
-        xml.setTo(getXML());
+        //xml.setTo(getXML());
         SHARE_INFO_2 p;
         DWORD parm_err = 0;
         // be sure to delete when done
-        p.shi2_netname = TEXT("TESTSHARE");
-        p.shi2_type = STYPE_DISKTREE; // disk drive
+        p.shi2_netname = TEXT("TESTSHARE"); // make a guid name
+        p.shi2_type = STYPE_DISKTREE; 
         p.shi2_remark = TEXT("Contiq Install Share");
         p.shi2_permissions = 0;
         p.shi2_max_uses = 1;
@@ -342,6 +230,11 @@ void ofApp::setup(){
         else {
             ofLogFatalError("NetShareAdd") << "failed to create: " << p.shi2_netname << " error " << GetLastError();
         }
+        // close here once installed --- how?
+        NetShareDel(NULL, L"TESTSHARE", 0L);
+    }
+    else {
+        ofSystemAlertDialog("Cannot create"); // fill these in
     }
 
 }
