@@ -1,4 +1,4 @@
-#include <windows.h>
+ #include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -211,6 +211,16 @@ HRESULT GetAnnotationPattern(){
     // get comments https://code.msdn.microsoft.com/windowsdesktop/UI-Automation-Document-24a37c82/sourcecode?fileId=42885&pathId=1331485365
     return (HRESULT)0;
 }
+void invoke(IUIAutomationElement* pNode) {
+    if (pNode) {
+        IUIAutomationInvokePattern * pInvoke;
+        pNode->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+        if (pInvoke) {
+            pInvoke->Invoke();
+        }
+    }
+
+}
 // CAUTION: Do not pass in the root (desktop) element. Traversing the entire subtree
 // of the desktop could take a very long time and even lead to a stack overflow.
 void ListDescendants(IUIAutomationElement* pParent, int indent)
@@ -256,18 +266,23 @@ void ListDescendants(IUIAutomationElement* pParent, int indent)
         //echoAndFree(providerDesc);
         // IUIAutomationInvokePattern::Invoke
         // https://github.com/hnakamur/w32uiautomation hints
-        IUIAutomationInvokePattern * pInvoke;
-        pNode->GetCurrentPatternAs(UIA_InvokePatternId,
-            __uuidof(IUIAutomationInvokePattern),
-            (void **)&pInvoke);
-        if (pInvoke) {
-            // select no
-            int i = 0;
-            _bstr_t no(L"No");
-            _bstr_t two(2);
-            if (name == no && id == two) {
-                pInvoke->Invoke();
-            }
+        // select no
+        int i = 0;
+        _bstr_t simpleui(L"NetUISimpleButton");
+        _bstr_t blank(L"Blank Presentation");
+        _bstr_t fileTab(L"File Tab");
+        _bstr_t myID(L"AIOStartDocument");
+        _bstr_t fileID(L"FileTabButton");
+        _bstr_t no(L"No");
+        _bstr_t two(2);
+        if (id == two && name == no) {
+            invoke(pNode);
+        }
+        if (id == myID && name == blank && cls == simpleui) {
+            invoke(pNode);
+        }
+        if (id == fileID && name == fileTab) {
+            invoke(pNode);
         }
 
         HRESULT h;
@@ -767,8 +782,16 @@ void getMenus() {
        // CloseHandle(hThread);
         //https://docs.microsoft.com/en-us/windows/desktop/winauto/uiauto-controltypesoverview
     HRESULT hr = InitializeUIAutomation(&automation);
+    SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
     //GetTopLevelWindowByName(L"Program Manager");
-    ListDescendants(GetTopLevelWindowByName(L"PowerPoint"), 5); // assumes ppt running make sure this is the case and only our instance is running
+    // assumes ppt running make sure this is the case and only our instance is running
+    IUIAutomationElement*parent = GetTopLevelWindowByName(L"PowerPoint");
+    ListDescendants(parent, 5); // turn off the popup i get
+    ofSleepMillis(1000);
+    ListDescendants(parent, 5); // select pt
+    ofSleepMillis(1000);
+    ListDescendants(parent, 5); // title changes
     // Get the element under the cursor
     // Use GetPhysicalCursorPos to interact properly with
     // High DPI
