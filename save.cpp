@@ -1,4 +1,4 @@
- #include <windows.h>
+  #include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -185,12 +185,105 @@ IUIAutomationElement* GetTopLevelWindowByName(LPWSTR windowName){
             }
         }
     }
-
     VariantClear(&varProp);
     return pFound;
 }
+void invoke(IUIAutomationElement* pNode) {
+    if (pNode) {
+        IUIAutomationInvokePattern * pInvoke;
+        pNode->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+        if (pInvoke) {
+            pInvoke->Invoke();
+        }
+    }
+
+}
 void justEcho(const std::wstring& name, _bstr_t& bs) {
-    wprintf_s(L"%s = %s\n",  name.c_str(), static_cast<wchar_t*>(bs));
+    wprintf_s(L"%s = %s\n", name.c_str(), static_cast<wchar_t*>(bs));
+}
+
+void echoElement(IUIAutomationElement* element, BOOL& b, _bstr_t& cls, _bstr_t& name, _bstr_t& id) {
+    if (element) {
+        element->get_CurrentIsControlElement(&b);
+        b = true;//bugbug just fo rnow
+        element->get_CurrentClassName(cls.GetAddress());
+        justEcho(L"cls", cls);
+        element->get_CurrentName(name.GetAddress());
+        justEcho(L"name", name);
+        _bstr_t status;
+        element->get_CurrentItemStatus(status.GetAddress());
+        justEcho(L"status", status);
+        _bstr_t desc;
+        element->get_CurrentLocalizedControlType(desc.GetAddress());
+        justEcho(L"desc", desc);
+        element->get_CurrentAutomationId(id.GetAddress());
+        justEcho(L"id", id);
+    }
+
+}
+
+void GetAllWindowByName(IUIAutomationElement* pRoot) {
+    IUIAutomationElement* pFound;
+    IUIAutomationElementArray* all;
+
+        // Get the desktop element
+        //HRESULT hr = automation->GetRootElement(&pRoot);
+
+        // Get a top-level element by name, such as "Program Manager"
+        if (pRoot) {
+            IUIAutomationCondition * pCondition;
+            automation->CreateTrueCondition(&pCondition);
+            pRoot->FindAll(TreeScope_Subtree, pCondition, &all);
+            if (all) {
+                int len;
+                all->get_Length(&len);
+                bool fireOK = false;
+                for (int i = 0; i < len;++i){
+                    all->GetElement(i, &pFound);
+                     BOOL b;
+                    _bstr_t cls;
+                    _bstr_t name;
+                    _bstr_t id; // just call the seach each time, super easy parser for install at least
+                    echoElement(pFound, b, cls, name, id);
+                    //https://docs.microsoft.com/en-us/windows/desktop/winauto/uiauto-implementingselectionitem
+                    _bstr_t trustcenter(L"Trust Center");
+                    _bstr_t trustcenterSettings(L"Trust Center Settings...");
+                    _bstr_t trustAccess(L"Trust access to the VBA project object model");
+                    _bstr_t ok(L"OK");
+                    _bstr_t close(L"Close");
+                    if (name == trustcenter) {
+                        IUIAutomationSelectionItemPattern * pInvoke;
+                        pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pInvoke);
+                        if (pInvoke) {
+                            pInvoke->Select();
+                        }
+                       // pFound->
+                       // invoke(pFound);
+                    }
+                    if (name == trustcenterSettings) {
+                        invoke(pFound);
+                    }
+                    if (name == trustAccess) {
+                        // IToggleProvider UIA_TextPatternId
+                        IUIAutomationTogglePattern * pInvoke;
+                        pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pInvoke);
+                        ToggleState state;
+                        pInvoke->get_CurrentToggleState(&state);
+                        if (state != ToggleState_On) {
+                            pInvoke->Toggle(); // 
+                            fireOK = true;
+                        }
+                    }
+                    if (name == close && fireOK) {
+                        invoke(pFound);
+                    }
+                    if (name == ok && fireOK) {
+                        invoke(pFound);
+                    }
+                }
+            }
+       }
+
 }
 void findCheckBox(IUIAutomationElement * pElement) {
     IUIAutomationCondition * pCheckBoxProp;
@@ -211,16 +304,7 @@ HRESULT GetAnnotationPattern(){
     // get comments https://code.msdn.microsoft.com/windowsdesktop/UI-Automation-Document-24a37c82/sourcecode?fileId=42885&pathId=1331485365
     return (HRESULT)0;
 }
-void invoke(IUIAutomationElement* pNode) {
-    if (pNode) {
-        IUIAutomationInvokePattern * pInvoke;
-        pNode->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
-        if (pInvoke) {
-            pInvoke->Invoke();
-        }
-    }
 
-}
 // CAUTION: Do not pass in the root (desktop) element. Traversing the entire subtree
 // of the desktop could take a very long time and even lead to a stack overflow.
 void ListDescendants(IUIAutomationElement* pParent, int indent)
@@ -240,51 +324,50 @@ void ListDescendants(IUIAutomationElement* pParent, int indent)
 
     while (pNode)
     {
-        BOOL b;
-        for (int x = 0; x <= indent; x++)
-        {
-            std::wcout << L"   ";
-        }
-        pNode->get_CurrentIsControlElement(&b);
-        _bstr_t cls;
-        pNode->get_CurrentClassName(cls.GetAddress());
-        justEcho(L"cls", cls);
-        _bstr_t name;
-        pNode->get_CurrentName(name.GetAddress());
-        justEcho(L"name", name);
-        _bstr_t status;
-        pNode->get_CurrentItemStatus(status.GetAddress());
-        justEcho(L"status", status);
-        _bstr_t desc;
-        pNode->get_CurrentLocalizedControlType(desc.GetAddress());
-        justEcho(L"desc", desc);
-        _bstr_t id;
-        pNode->get_CurrentAutomationId(id.GetAddress());
-        justEcho(L"id", id);
         //BSTR providerDesc;
         //pNode->get_CurrentProviderDescription(&providerDesc);
         //echoAndFree(providerDesc);
         // IUIAutomationInvokePattern::Invoke
         // https://github.com/hnakamur/w32uiautomation hints
         // select no
-        int i = 0;
-        _bstr_t simpleui(L"NetUISimpleButton");
-        _bstr_t blank(L"Blank Presentation");
-        _bstr_t fileTab(L"File Tab");
-        _bstr_t myID(L"AIOStartDocument");
-        _bstr_t fileID(L"FileTabButton");
-        _bstr_t no(L"No");
-        _bstr_t two(2);
-        if (id == two && name == no) {
-            invoke(pNode);
-        }
-        if (id == myID && name == blank && cls == simpleui) {
-            invoke(pNode);
-        }
-        if (id == fileID && name == fileTab) {
-            invoke(pNode);
-        }
+        BOOL b;
+        _bstr_t cls;
+        _bstr_t name;
+        _bstr_t id; // just call the seach each time, super easy parser for install at least
 
+        echoElement(pNode, b, cls, name, id);
+        if (true) {
+            _bstr_t simpleui(L"NetUISimpleButton");
+            _bstr_t blank(L"Blank Presentation");
+            _bstr_t fileTab(L"File Tab");
+            _bstr_t myID(L"AIOStartDocument");
+            _bstr_t fileID(L"FileTabButton");
+            _bstr_t no(L"No");
+            _bstr_t two(2);
+            _bstr_t options(L"Options");
+            _bstr_t outspace(L"NetUIOutSpaceButton");
+            _bstr_t trustcenter(L"Trust Center Settings...");
+            
+            if (id == two && name == no) {
+                invoke(pNode);
+            }
+            if (id == myID && name == blank && cls == simpleui) {
+                invoke(pNode);
+            }
+            if (id == fileID && name == fileTab) {
+                invoke(pNode);
+            }
+            if (name == options) {
+                if (cls == outspace) {
+                    invoke(pNode);
+                }
+            }
+            if (name == trustcenter) {
+                if (cls == outspace) {
+                    invoke(pNode);
+                }
+            }
+        }
         HRESULT h;
 
         ListDescendants(pNode, indent + 1);
@@ -791,7 +874,18 @@ void getMenus() {
     ofSleepMillis(1000);
     ListDescendants(parent, 5); // select pt
     ofSleepMillis(1000);
-    ListDescendants(parent, 5); // title changes
+    ListDescendants(parent, 5); // title changes, File
+    ofSleepMillis(1000);
+    ListDescendants(parent, 5); // Options
+    ofSleepMillis(1000);
+   // _bstr_t name;
+   // parent->get_CurrentName(name.GetAddress());
+    GetAllWindowByName(parent);
+    GetAllWindowByName(parent); // 
+    GetAllWindowByName(parent); // Trust access to the VBA project object model
+    GetAllWindowByName(parent); // OK - but only tthis OK --- pass in somehow
+    GetAllWindowByName(parent); // close power point
+
     // Get the element under the cursor
     // Use GetPhysicalCursorPos to interact properly with
     // High DPI
