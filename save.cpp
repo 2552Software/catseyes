@@ -1,4 +1,4 @@
-  #include <windows.h>
+#include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -154,38 +154,62 @@ void fileVersion(const std::wstring& filePath, uint16_t& major, uint16_t& minor,
 1) Go to Insert > Click on "My Add-ins" > Go to "SHARED FOLDER" tab > Select Contiq plugin and click Add.
 
 */
-//--------------------------------------------------------------
-IUIAutomationElement* GetTopLevelWindowByName(LPWSTR windowName){
-    if (!windowName)    {
-        return NULL;
+
+void walkTheWalk(IUIAutomationElement* pFound, const std::wstring&findme) {
+    IUIAutomationTreeWalker* pControlWalker = NULL;
+    IUIAutomationElement* pNode = NULL;
+
+    automation->get_ControlViewWalker(&pControlWalker);
+    if (pControlWalker == NULL)
+        goto cleanup;
+
+    pControlWalker->GetFirstChildElement(pFound, &pNode);
+    if (pNode == NULL)
+        goto cleanup;
+
+    while (pNode)    {
+        _bstr_t name;
+        pNode->get_CurrentLocalizedControlType(name.GetAddress());
+        std::wstring s = name;
+        int i = s.find(findme);
+        if (i> 0) {
+            goto cleanup;
+            //walkTheWalk(pNode, findme);
+        }
+        IUIAutomationElement* pNext;
+        pControlWalker->GetNextSiblingElement(pNode, &pNext);
+        pNode->Release();
+        pNode = pNext;
     }
 
-    IUIAutomationElement* pRoot;
-    IUIAutomationElement* pFound;
-    VARIANT varProp;
-    varProp.vt = VT_BSTR;
-    varProp.bstrVal = SysAllocString(windowName);
+cleanup:
+    if (pControlWalker != NULL)
+        pControlWalker->Release();
+
+    if (pNode != NULL)
+        pNode->Release();
+
+}
+//--------------------------------------------------------------
+IUIAutomationElement* GetTopLevelWindowByName(const std::wstring& windowName){
+    IUIAutomationElement* pRoot = nullptr;
+    IUIAutomationElement* pFound = nullptr;
 
     // Get the desktop element
     HRESULT hr = automation->GetRootElement(&pRoot);
-
     // Get a top-level element by name, such as "Program Manager"
-    BSTR name;
     if (pRoot)    {
+        IUIAutomationElement* element;
         IUIAutomationCondition* pCondition;
-        automation->CreatePropertyCondition(UIA_NamePropertyId,
-            varProp, &pCondition);
+        VARIANT varProp;
+        VariantInit(&varProp);
+        varProp.vt = VT_BSTR;
+        varProp.bstrVal = SysAllocString(windowName.c_str());
+        automation->CreatePropertyCondition(UIA_NamePropertyId, varProp, &pCondition);
         pRoot->FindFirst(TreeScope_Children, pCondition, &pFound);
         pRoot->Release();
         pCondition->Release();
-        if (pFound){
-            hr = pFound->get_CurrentName(&name);
-            if (SUCCEEDED(hr)) {
-
-            }
-        }
     }
-    VariantClear(&varProp);
     return pFound;
 }
 void invoke(IUIAutomationElement* pNode) {
@@ -198,33 +222,34 @@ void invoke(IUIAutomationElement* pNode) {
     }
 
 }
-void justEcho(const std::wstring& name, _bstr_t& bs) {
-    wprintf_s(L"%s = %s\n", name.c_str(), static_cast<wchar_t*>(bs));
+void justEcho(_bstr_t& target, const std::wstring& name, _bstr_t& bs) {
+    std::wstring s = target;
+    wprintf_s(L"target %s, %s = %s\n", s.c_str(), name.c_str(), static_cast<wchar_t*>(bs));
 }
 
-void echoElement(IUIAutomationElement* element, BOOL& b, _bstr_t& cls, _bstr_t& name, _bstr_t& id) {
+void echoElement(IUIAutomationElement* element, _bstr_t& target, BOOL& b, _bstr_t& cls, _bstr_t& name, _bstr_t& id) {
     if (element) {
         element->get_CurrentIsControlElement(&b);
         b = true;//bugbug just fo rnow
         element->get_CurrentClassName(cls.GetAddress());
-        justEcho(L"cls", cls);
+        justEcho(target, L"cls", cls);
         element->get_CurrentName(name.GetAddress());
-        justEcho(L"name", name);
+        justEcho(target, L"name", name);
         _bstr_t status;
         element->get_CurrentItemStatus(status.GetAddress());
-        justEcho(L"status", status);
+        justEcho(target, L"status", status);
         _bstr_t desc;
         element->get_CurrentLocalizedControlType(desc.GetAddress());
-        justEcho(L"desc", desc);
+        justEcho(target, L"desc", desc);
         element->get_CurrentAutomationId(id.GetAddress());
-        justEcho(L"id", id);
+        justEcho(target, L"id", id);
     }
 
 }
-
-void GetAllWindowByName(IUIAutomationElement* pRoot) {
-    IUIAutomationElement* pFound;
-    IUIAutomationElementArray* all;
+enum CommandType {Invoke, Select, Insert, Toggle};
+void GetAllWindowByName(IUIAutomationElement* pRoot, _bstr_t& target, CommandType cmd=Invoke) {
+    IUIAutomationElement* pFound;//bugbug we do not free this
+    IUIAutomationElementArray* all;//bugbug we do not free this
 
         // Get the desktop element
         //HRESULT hr = automation->GetRootElement(&pRoot);
@@ -234,36 +259,57 @@ void GetAllWindowByName(IUIAutomationElement* pRoot) {
             IUIAutomationCondition * pCondition;
             automation->CreateTrueCondition(&pCondition);
             pRoot->FindAll(TreeScope_Subtree, pCondition, &all);
+            pCondition->Release();
             if (all) {
                 int len;
                 all->get_Length(&len);
-                bool fireOK = false;
                 for (int i = 0; i < len;++i){
                     all->GetElement(i, &pFound);
                      BOOL b;
                     _bstr_t cls;
                     _bstr_t name;
                     _bstr_t id; // just call the seach each time, super easy parser for install at least
-                    echoElement(pFound, b, cls, name, id);
+                    echoElement(pFound, target, b, cls, name, id);
                     //https://docs.microsoft.com/en-us/windows/desktop/winauto/uiauto-implementingselectionitem
-                    _bstr_t trustcenter(L"Trust Center");
-                    _bstr_t trustcenterSettings(L"Trust Center Settings...");
-                    _bstr_t trustAccess(L"Trust access to the VBA project object model");
-                    _bstr_t ok(L"OK");
-                    _bstr_t close(L"Close");
-                    if (name == trustcenter) {
+                    _bstr_t outspace(L"NetUIOutSpaceButton");
+
+                    if (name == target && cmd == Invoke) { // do we need id == fileID ?
+                        invoke(pFound);
+                        return;
+                    }
+                    if (name == target && cmd == Insert) {
+                        BOOL enabled;
+                        pFound->get_CurrentIsEnabled(&enabled);
+                        if (!enabled)    {
+                            // set error
+                            int i = 0;
+                        }
+                        pFound->get_CurrentIsKeyboardFocusable(&enabled);
+                        if (enabled) {
+                            IUIAutomationValuePattern *pval;
+                            // IValueProvider
+                           // IUIAutomationTextEditPattern *pval;
+                           // IValueProvider
+                            pFound->GetCurrentPatternAs(UIA_ValuePatternId, __uuidof(IUIAutomationValuePattern), (void **)&pval);
+                            pFound->SetFocus();
+                            if (pval) {
+                                _bstr_t path(L"FatCat"); // pass as parameter
+                                if (pval) {
+                                    pval->SetValue(path.GetBSTR());
+                                }
+                            }
+                        }
+
+                    }
+                    if (name == target && cmd == Select) {
                         IUIAutomationSelectionItemPattern * pInvoke;
                         pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pInvoke);
                         if (pInvoke) {
                             pInvoke->Select();
+                            return;
                         }
-                       // pFound->
-                       // invoke(pFound);
                     }
-                    if (name == trustcenterSettings) {
-                        invoke(pFound);
-                    }
-                    if (name == trustAccess) {
+                    if (name == target && cmd == Toggle) {
                         // IToggleProvider UIA_TextPatternId
                         IUIAutomationTogglePattern * pInvoke;
                         pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pInvoke);
@@ -271,14 +317,8 @@ void GetAllWindowByName(IUIAutomationElement* pRoot) {
                         pInvoke->get_CurrentToggleState(&state);
                         if (state != ToggleState_On) {
                             pInvoke->Toggle(); // 
-                            fireOK = true;
                         }
-                    }
-                    if (name == close && fireOK) {
-                        invoke(pFound);
-                    }
-                    if (name == ok && fireOK) {
-                        invoke(pFound);
+                        return;
                     }
                 }
             }
@@ -335,7 +375,7 @@ void ListDescendants(IUIAutomationElement* pParent, int indent)
         _bstr_t name;
         _bstr_t id; // just call the seach each time, super easy parser for install at least
 
-        echoElement(pNode, b, cls, name, id);
+        //echoElement( pNode, 0, b, cls, name, id);
         if (true) {
             _bstr_t simpleui(L"NetUISimpleButton");
             _bstr_t blank(L"Blank Presentation");
@@ -347,7 +387,8 @@ void ListDescendants(IUIAutomationElement* pParent, int indent)
             _bstr_t options(L"Options");
             _bstr_t outspace(L"NetUIOutSpaceButton");
             _bstr_t trustcenter(L"Trust Center Settings...");
-            
+            _bstr_t cats(L"Trusted Add-in Catalogs");
+
             if (id == two && name == no) {
                 invoke(pNode);
             }
@@ -366,6 +407,9 @@ void ListDescendants(IUIAutomationElement* pParent, int indent)
                 if (cls == outspace) {
                     invoke(pNode);
                 }
+            }
+            if (name == cats) {
+                int j = 0;
             }
         }
         HRESULT h;
@@ -408,8 +452,7 @@ cleanup:
 //   EXAMPLE:  
 //      AutoWrap(DISPATCH_METHOD, NULL, pDisp, L"call", 2, parm[1], parm[0]); 
 // 
-HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp,
-    LPOLESTR ptName, int cArgs...)
+HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptName, int cArgs...)
 {
     // Begin variable-argument list 
     va_list marker;
@@ -458,12 +501,14 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp,
     }
 
     // Make the call 
-    hr = pDisp->Invoke(dispID, IID_NULL, LOCALE_SYSTEM_DEFAULT,
-        autoType, &dp, pvResult, NULL, NULL);
-    if (FAILED(hr))
-    {
-        wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx\n",
-            ptName, dispID, hr);
+    hr = pDisp->Invoke(dispID, IID_NULL, LOCALE_SYSTEM_DEFAULT, autoType, &dp, pvResult, NULL, NULL);
+    if (FAILED(hr))    {
+        if (hr == DISP_E_EXCEPTION) {
+            wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx DISP_E_EXCEPTION, really bad\n", ptName, dispID, hr);
+        }
+        else {
+            wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx\n", ptName, dispID, hr);
+        }
         _exit(0);
         return hr;
     }
@@ -574,8 +619,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     // Get the OS collection 
     IDispatch *pOS = NULL;
     {
-        VARIANT result;
-        VariantInit(&result);
+        _variant_t result;
         AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"OperatingSystem", 0);
         pOS = result.pdispVal;
         _putws(result.bstrVal);
@@ -616,7 +660,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
 
     _putws(L"A new presentation is created");
 
-
+    /*
     ///////////////////////////////////////////////////////////////////////// 
     // Insert a new Slide and add some text to it. 
     //  
@@ -693,16 +737,63 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     {
         VARIANT x;
         x.vt = VT_BSTR;
-        x.bstrVal = SysAllocString(L"All-In-One Code Framework");
+        x.bstrVal = SysAllocString(L"Welcome To Contiq");
         AutoWrap(DISPATCH_PROPERTYPUT, NULL, pTxtRange, L"Text", 1, x);
         VariantClear(&x);
     }
+        */
 
+    IDispatch *pCaption = NULL;
+    _bstr_t caption;
+    {
+        VARIANT result;
+        VariantInit(&result);
+        AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"Caption", 0);
+        pCaption = result.pdispVal;
+        caption = result.bstrVal;
+        _putws(result.bstrVal);
+    }
+
+    hr = InitializeUIAutomation(&automation);
+    SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
+    //GetTopLevelWindowByName(L"Program Manager");
+    std::wstring s = caption;
+    s += L" - PowerPoint";
+    // assumes ppt running make sure this is the case and only our instance is running
+    IUIAutomationElement*parent = GetTopLevelWindowByName(s);// (L"PowerPoint"
+    _bstr_t trustcenter(L"Trust Center");
+    _bstr_t trustcenterSettings(L"Trust Center Settings...");
+    _bstr_t trustedAddinCatalogs(L"Trusted Add - In Catalogs");
+    _bstr_t trustAccess(L"Trust access to the VBA project object model");
+    _bstr_t ok(L"OK");
+    _bstr_t close(L"Close");
+    _bstr_t fileTab(L"File Tab");
+    _bstr_t myID(L"AIOStartDocument");
+    _bstr_t fileID(L"FileTabButton");
+    _bstr_t options(L"Options");
+    GetAllWindowByName(parent, _bstr_t(L"No")); // first dlg box
+    GetAllWindowByName(parent, _bstr_t(L"File Tab")); // File
+    GetAllWindowByName(parent, _bstr_t(L"Options")); // Options
+    GetAllWindowByName(parent, _bstr_t(L"Trust Center"), Select);//Trust Center
+    GetAllWindowByName(parent, _bstr_t(L"Trust Center Settings...")); // button
+    GetAllWindowByName(parent, _bstr_t(L"Trusted Add - In Catalogs")); // button
+    GetAllWindowByName(parent, _bstr_t(L"Catalog Url"), Insert); // edit field
+    GetAllWindowByName(parent, _bstr_t(L"Add catalog")); // button
+
+    GetAllWindowByName(parent, _bstr_t(L"Trust access to the VBA project object model"), Toggle); // Trust access to the VBA project object model
+    GetAllWindowByName(parent, _bstr_t(L"OK")); // OK - but only tthis OK --- pass in somehow
+    GetAllWindowByName(parent, _bstr_t(L"Trust Center Settings...")); // button
+    GetAllWindowByName(parent, _bstr_t(L"Trusted Add - In Catalogs")); // button
+   
+    GetAllWindowByName(parent, _bstr_t(L"OK")); // OK - but only tthis OK --- pass in somehow
+    GetAllWindowByName(parent, _bstr_t(L"OK")); // 2end OK 
+    int i = 00;
 
     ///////////////////////////////////////////////////////////////////////// 
     // Save the presentation as a pptx file and close it. 
     //  
-
+    /*
     _putws(L"Save and close the presentation");
 
     {
@@ -738,6 +829,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
 
         VariantClear(&vtFileName);
     }
+    */
 
     // pPre->Close() 
     AutoWrap(DISPATCH_METHOD, NULL, pPre, L"Close", 0);
@@ -754,7 +846,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     ///////////////////////////////////////////////////////////////////////// 
     // Release the COM objects. 
     //  
-
+    /*
     if (pTxtRange != NULL)
     {
         pTxtRange->Release();
@@ -779,13 +871,11 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     {
         pSlides->Release();
     }
+        */
+
     if (pPre != NULL)
     {
         pPre->Release();
-    }
-    if (pPres != NULL)
-    {
-        pPres->Release();
     }
     if (pPpApp != NULL)
     {
@@ -856,7 +946,10 @@ void getMenus() {
 */
 //https://docs.microsoft.com/en-us/officeupdates/update-history-office-2019
     void ofApp::setup(){
-        HANDLE hThread;
+        HANDLE hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, NULL, 0, NULL);
+        WaitForSingleObject(hThread, INFINITE);
+        CloseHandle(hThread);        
+        return;
 
         // Demonstrate automating PowerPoint using C++ and the COM APIs in a  
         // separate thread. 
@@ -880,12 +973,13 @@ void getMenus() {
     ofSleepMillis(1000);
    // _bstr_t name;
    // parent->get_CurrentName(name.GetAddress());
-    GetAllWindowByName(parent);
-    GetAllWindowByName(parent); // 
-    GetAllWindowByName(parent); // Trust access to the VBA project object model
-    GetAllWindowByName(parent); // OK - but only tthis OK --- pass in somehow
-    GetAllWindowByName(parent); // close power point
+//    GetAllWindowByName(parent);
+ //   GetAllWindowByName(parent); // 
+  //  GetAllWindowByName(parent); // Trust access to the VBA project object model
+   // GetAllWindowByName(parent); // OK - but only tthis OK --- pass in somehow
+    //GetAllWindowByName(parent); // close power point
 
+    ListDescendants(parent, 5); // Trust Center
     // Get the element under the cursor
     // Use GetPhysicalCursorPos to interact properly with
     // High DPI
