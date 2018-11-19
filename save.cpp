@@ -1,4 +1,4 @@
-#include <windows.h>
+ #include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -260,7 +260,7 @@ public:
 void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
     IUIAutomationElement* pFound;//bugbug we do not free this
     IUIAutomationElementArray* all;//bugbug we do not free this
-    ofSleepMillis(500);
+    ofSleepMillis(1000);
         // Get the desktop element
         //HRESULT hr = automation->GetRootElement(&pRoot);
 
@@ -545,8 +545,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     // Option 1. Get CLSID from ProgID using CLSIDFromProgID. 
     LPCOLESTR progID = L"PowerPoint.Application";
     hr = CLSIDFromProgID(progID, &clsid);
-    if (FAILED(hr))
-    {
+    if (FAILED(hr))    {
         wprintf(L"CLSIDFromProgID(\"%s\") failed w/err 0x%08lx\n", progID, hr);
         return 1;
     }
@@ -705,13 +704,11 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
         VariantClear(&x);
     }
 
-    IDispatch *pCaption = NULL;
     _bstr_t caption;
     {
         VARIANT result;
         VariantInit(&result);
         AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"Caption", 0);
-        pCaption = result.pdispVal;
         caption = result.bstrVal;
         _putws(result.bstrVal);
     }
@@ -730,6 +727,8 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     parse(parent, UICommand(_bstr_t(L"Trust Center"), UICommand::Select));//Trust Center
     parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
     parse(parent, UICommand(_bstr_t(L"Trust access to the VBA project object model"), UICommand::EnableToggle)); // Trust access to the VBA project object model
+    parse(parent, UICommand(_bstr_t(L"OK"))); // knock down any error screen 
+    parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
     createShare(L"data");
     wchar_t  infoBuf[MAX_COMPUTERNAME_LENGTH + 1];
     DWORD  bufCharCount = MAX_COMPUTERNAME_LENGTH + 1;
@@ -939,6 +938,11 @@ DWORD FindProcessId(const std::wstring& processName){
         HANDLE hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, NULL, 0, NULL);
         WaitForSingleObject(hThread, INFINITE);
         CloseHandle(hThread);        
+
+        hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, NULL, 0, NULL);
+        WaitForSingleObject(hThread, INFINITE);
+        CloseHandle(hThread);
+
         return;
 
     ofSetWindowShape(ofGetScreenWidth(), ofGetScreenHeight());
