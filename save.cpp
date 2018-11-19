@@ -1,4 +1,4 @@
-#include <windows.h>
+  #include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -246,8 +246,16 @@ void echoElement(IUIAutomationElement* element, _bstr_t& target, BOOL& b, _bstr_
     }
 
 }
-enum CommandType {Invoke, Select, Insert, Toggle};
-void GetAllWindowByName(IUIAutomationElement* pRoot, _bstr_t& target, CommandType cmd=Invoke) {
+class UICommand {
+public:
+    enum CommandType { Invoke, Select, Insert, EnableToggle };
+    UICommand(bstr_t& targetIn, CommandType cmdIn = Invoke) { cmd = cmdIn; target = targetIn; }
+    UICommand(bstr_t& targetIn, const std::wstring& dataIn, CommandType cmdIn = Invoke) { target = targetIn; data = dataIn;  cmd = cmdIn; }
+    _bstr_t target;
+    CommandType cmd;
+    std::wstring data;
+};
+void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
     IUIAutomationElement* pFound;//bugbug we do not free this
     IUIAutomationElementArray* all;//bugbug we do not free this
 
@@ -269,15 +277,20 @@ void GetAllWindowByName(IUIAutomationElement* pRoot, _bstr_t& target, CommandTyp
                     _bstr_t cls;
                     _bstr_t name;
                     _bstr_t id; // just call the seach each time, super easy parser for install at least
-                    echoElement(pFound, target, b, cls, name, id);
+                    echoElement(pFound, cmd.target, b, cls, name, id);
+                    _bstr_t test(L"Show In Menu");
+                    _bstr_t test2(L"NetUIHWND");
+                    if (name == test || cls == test2) {
+                        int xx = 0;
+                    }
                     //https://docs.microsoft.com/en-us/windows/desktop/winauto/uiauto-implementingselectionitem
                     _bstr_t outspace(L"NetUIOutSpaceButton");
 
-                    if (name == target && cmd == Invoke) { // do we need id == fileID ?
+                    if (name == cmd.target && cmd.cmd == UICommand::Invoke) { // do we need id == fileID ?
                         invoke(pFound);
                         return;
                     }
-                    if (name == target && cmd == Insert) {
+                    if (name == cmd.target && cmd.cmd == UICommand::Insert) {
                         BOOL enabled;
                         pFound->get_CurrentIsEnabled(&enabled);
                         if (!enabled)    {
@@ -293,15 +306,15 @@ void GetAllWindowByName(IUIAutomationElement* pRoot, _bstr_t& target, CommandTyp
                             pFound->GetCurrentPatternAs(UIA_ValuePatternId, __uuidof(IUIAutomationValuePattern), (void **)&pval);
                             pFound->SetFocus();
                             if (pval) {
-                                _bstr_t path(L"FatCat"); // pass as parameter
                                 if (pval) {
-                                    pval->SetValue(path.GetBSTR());
+                                    _bstr_t val(cmd.data.c_str());
+                                    pval->SetValue(val.GetBSTR());
+                                    return;
                                 }
                             }
                         }
-
                     }
-                    if (name == target && cmd == Select) {
+                    if (name == cmd.target && cmd.cmd == UICommand::Select) {
                         IUIAutomationSelectionItemPattern * pInvoke;
                         pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pInvoke);
                         if (pInvoke) {
@@ -309,16 +322,27 @@ void GetAllWindowByName(IUIAutomationElement* pRoot, _bstr_t& target, CommandTyp
                             return;
                         }
                     }
-                    if (name == target && cmd == Toggle) {
+
+                    if (name == cmd.target && cmd.cmd == UICommand::Select) {
+                        IUIAutomationSelectionItemPattern * pInvoke;
+                        pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pInvoke);
+                        if (pInvoke) {
+                            pInvoke->Select();
+                            return;
+                        }
+                    }
+                    if (name == cmd.target && cmd.cmd == UICommand::EnableToggle) {
                         // IToggleProvider UIA_TextPatternId
                         IUIAutomationTogglePattern * pInvoke;
                         pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pInvoke);
-                        ToggleState state;
-                        pInvoke->get_CurrentToggleState(&state);
-                        if (state != ToggleState_On) {
-                            pInvoke->Toggle(); // 
+                        if (pInvoke) {
+                            ToggleState state;
+                            pInvoke->get_CurrentToggleState(&state);
+                            if (state != ToggleState_On) {
+                                pInvoke->Toggle(); // 
+                            }
+                            return;
                         }
-                        return;
                     }
                 }
             }
@@ -547,7 +571,37 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
 // 
 DWORD GetModuleDirectory(LPWSTR pszDir, DWORD nSize);
 
+void createShare(const std::wstring& name) {
+    ofDirectory dir("ContiqManifest");
+    if (dir.create()) {
+        ofLogNotice("ofDirectory") << "created: " << dir.path();
+        ofFilePath file;
+        ofxXmlPoco xml;
+        //xml.setTo(getXML());
+        SHARE_INFO_2 p;
+        DWORD parm_err = 0;
+        // be sure to delete when done
+        p.shi2_netname = (wchar_t*)name.c_str(); // make a guid name
+        p.shi2_type = STYPE_DISKTREE;
+        p.shi2_remark = TEXT("Contiq Install Share");
+        p.shi2_permissions = 0;
+        p.shi2_max_uses = 1;
+        p.shi2_current_uses = 0;
+        p.shi2_path = TEXT(".");
+        p.shi2_passwd = NULL; // no password
+        NET_API_STATUS status = NetShareAdd(NULL, 2, (LPBYTE)&p, &parm_err);
+        if (!status) {
+            ofLogNotice("NetShareAdd") << "created: " << p.shi2_netname;
+        }
+        else {
+            ofLogFatalError("NetShareAdd") << "failed to create: " << p.shi2_netname << " error " << GetLastError();
+        }
+    }
+    else {
+        ofSystemAlertDialog("Cannot create"); // fill these in
+    }
 
+}
 // 
 //   FUNCTION: AutomatePowerPointByCOMAPI(LPVOID) 
 // 
@@ -762,32 +816,25 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     s += L" - PowerPoint";
     // assumes ppt running make sure this is the case and only our instance is running
     IUIAutomationElement*parent = GetTopLevelWindowByName(s);// (L"PowerPoint"
-    _bstr_t trustcenter(L"Trust Center");
-    _bstr_t trustcenterSettings(L"Trust Center Settings...");
-    _bstr_t trustedAddinCatalogs(L"Trusted Add - In Catalogs");
-    _bstr_t trustAccess(L"Trust access to the VBA project object model");
-    _bstr_t ok(L"OK");
-    _bstr_t close(L"Close");
-    _bstr_t fileTab(L"File Tab");
-    _bstr_t myID(L"AIOStartDocument");
-    _bstr_t fileID(L"FileTabButton");
-    _bstr_t options(L"Options");
-    GetAllWindowByName(parent, _bstr_t(L"No")); // first dlg box
-    GetAllWindowByName(parent, _bstr_t(L"File Tab")); // File
-    GetAllWindowByName(parent, _bstr_t(L"Options")); // Options
-    GetAllWindowByName(parent, _bstr_t(L"Trust Center"), Select);//Trust Center
-    GetAllWindowByName(parent, _bstr_t(L"Trust Center Settings...")); // button
-    GetAllWindowByName(parent, _bstr_t(L"Trusted Add - In Catalogs")); // button
-    GetAllWindowByName(parent, _bstr_t(L"Catalog Url"), Insert); // edit field
-    GetAllWindowByName(parent, _bstr_t(L"Add catalog")); // button
 
-    GetAllWindowByName(parent, _bstr_t(L"Trust access to the VBA project object model"), Toggle); // Trust access to the VBA project object model
-    GetAllWindowByName(parent, _bstr_t(L"OK")); // OK - but only tthis OK --- pass in somehow
-    GetAllWindowByName(parent, _bstr_t(L"Trust Center Settings...")); // button
-    GetAllWindowByName(parent, _bstr_t(L"Trusted Add - In Catalogs")); // button
-   
-    GetAllWindowByName(parent, _bstr_t(L"OK")); // OK - but only tthis OK --- pass in somehow
-    GetAllWindowByName(parent, _bstr_t(L"OK")); // 2end OK 
+    parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
+    parse(parent, UICommand(_bstr_t(L"File Tab"))); // File
+    parse(parent, UICommand(_bstr_t(L"Options"))); // Options
+    parse(parent, UICommand(_bstr_t(L"Trust Center"), UICommand::Select));//Trust Center
+    parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
+    parse(parent, UICommand(_bstr_t(L"Trust access to the VBA project object model"), UICommand::EnableToggle)); // Trust access to the VBA project object model
+    parse(parent, UICommand(_bstr_t(L"Trusted Add-in Catalogs"))); // button
+    createShare(L"data");
+    parse(parent, UICommand(_bstr_t(L"Catalog Url"), L"\\\\MARKSHAVLIKF7BE\\data", UICommand::Insert)); // edit field
+    parse(parent, UICommand(_bstr_t(L"Add catalog"))); // button
+    parse(parent, UICommand(_bstr_t(L"OK"))); // knock down any error screen 
+    parse(parent, UICommand(_bstr_t(L"Show in Menu"), UICommand::EnableToggle));
+    
+            // close here once installed --- how?
+    NetShareDel(NULL, L"data", 0L);
+    parse(parent, UICommand(_bstr_t(L"OK"))); // OK - but only tthis OK --- pass in somehow
+    parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
+    parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
     int i = 00;
 
     ///////////////////////////////////////////////////////////////////////// 
