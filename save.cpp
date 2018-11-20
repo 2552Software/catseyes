@@ -250,7 +250,7 @@ void echoElement(IUIAutomationElement* element, _bstr_t& target, BOOL& b, _bstr_
 }
 class UICommand {
 public:
-    enum CommandType { Invoke, Select, Insert, EnableToggle };
+    enum CommandType { Invoke, Select, Insert, EnableToggle, ExpandCollapse, Parse};
     UICommand(bstr_t& targetIn, CommandType cmdIn = Invoke) { cmd = cmdIn; target = targetIn; }
     UICommand(bstr_t& targetIn, const std::wstring& dataIn, CommandType cmdIn = Invoke) { target = targetIn; data = dataIn;  cmd = cmdIn; }
     _bstr_t target;
@@ -282,12 +282,49 @@ void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
                     echoElement(pFound, cmd.target, b, cls, name, id);
                     _bstr_t test(L"Show In Menu");
                     _bstr_t test2(L"NetUIHWND");
-                    if (name == test || cls == test2) {
-                        int xx = 0;
+                    // test code
+                    if (name == cmd.target && cmd.cmd == UICommand::Parse) {
+                    }
+                    // helpful https://docs.microsoft.com/en-gb/windows/desktop/WinAuto/uiauto-controlpatternsoverview
+                    if (0 && name == cmd.target) {
+                        IItemContainerProvider *pcont; // UIA_PaneControlTypeId  UIA_GroupControlTypeId
+                        pFound->GetCurrentPatternAs(UIA_GroupControlTypeId, __uuidof(IUIAutomationItemContainerPattern), (void **)&pcont);
+
+                        IUIAutomationElementArray *parray;
+                        pFound->GetCurrentPatternAs(UIA_GroupControlTypeId, __uuidof(IUIAutomationElementArray), (void **)&parray);
+
+                        IUIAutomationTogglePattern * pInvoke;
+                        pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pInvoke);
+                        if (pInvoke) {
+                            ToggleState state;
+                            pInvoke->get_CurrentToggleState(&state);
+                            if (state != ToggleState_On) {
+                                pInvoke->Toggle(); // 
+                            }
+                        }
+                        IUIAutomationSelectionItemPattern * pSelect;
+                        pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
+                        if (pSelect) {
+                            pSelect->Select();
+                        }
+                        IUIAutomationExpandCollapsePattern * pUniverse;
+                        pFound->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, __uuidof(IUIAutomationExpandCollapsePattern), (void **)&pUniverse);
+                        if (pUniverse) {
+                            pUniverse->Expand();
+                        }
+                        invoke(pFound);
+                        return;
                     }
                     //https://docs.microsoft.com/en-us/windows/desktop/winauto/uiauto-implementingselectionitem
                     _bstr_t outspace(L"NetUIOutSpaceButton");
 
+                    if (name == cmd.target  && cmd.cmd == UICommand::ExpandCollapse) {
+                        IUIAutomationExpandCollapsePattern * pUniverse;
+                        pFound->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, __uuidof(IUIAutomationExpandCollapsePattern), (void **)&pUniverse);
+                        if (pUniverse) {
+                            pUniverse->Expand();
+                        }
+                    }
                     if (name == cmd.target && cmd.cmd == UICommand::Invoke) { // do we need id == fileID ?
                         invoke(pFound);
                         return;
@@ -316,23 +353,15 @@ void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
                             }
                         }
                     }
+                   //C:\Program Files (x86)\Windows Kits\10\bin\10.0.17134.0\x64>inspect
                     if (name == cmd.target && cmd.cmd == UICommand::Select) {
-                        IUIAutomationSelectionItemPattern * pInvoke;
-                        pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pInvoke);
-                        if (pInvoke) {
-                            pInvoke->Select();
-                            return;
+                        IUIAutomationSelectionItemPattern * pSelect;
+                        pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
+                        if (pSelect) {
+                            pSelect->Select();
                         }
                     }
 
-                    if (name == cmd.target && cmd.cmd == UICommand::Select) {
-                        IUIAutomationSelectionItemPattern * pInvoke;
-                        pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pInvoke);
-                        if (pInvoke) {
-                            pInvoke->Select();
-                            return;
-                        }
-                    }
                     if (name == cmd.target && cmd.cmd == UICommand::EnableToggle) {
                         // IToggleProvider UIA_TextPatternId
                         IUIAutomationTogglePattern * pInvoke;
@@ -401,7 +430,6 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
 
     if (!pDisp)    {
         _putws(L"NULL IDispatch passed to AutoWrap()");
-        _exit(0);
         return E_INVALIDARG;
     }
 
@@ -415,7 +443,6 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
     hr = pDisp->GetIDsOfNames(IID_NULL, &ptName, 1, LOCALE_USER_DEFAULT, &dispID);
     if (FAILED(hr))    {
         wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n", ptName, hr);
-        _exit(0);
         return hr;
     }
 
@@ -445,7 +472,6 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
         else {
             wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx\n", ptName, dispID, hr);
         }
-        _exit(0);
         return hr;
     }
 
@@ -484,6 +510,22 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
 DWORD GetModuleDirectory(LPWSTR pszDir, DWORD nSize);
 
 void createShare(LPWSTR name) {
+    // need to run as admin, c++ does not.  Batch file may? https://stackoverflow.com/questions/4419868/what-is-the-current-directory-in-a-batch-file
+    //system("net share h=C:\\of_v0.10.0_vs2017_release\\apps\\myApps\\myContiq\\bin\\data");
+    SHARE_INFO_2 p;
+    memset(&p, 0, sizeof(p));
+    DWORD parm_err = 0;
+    // be sure to delete when done
+    p.shi2_netname = TEXT("Contiq"); // make a guid name
+    p.shi2_type = STYPE_DISKTREE;
+    p.shi2_remark = TEXT("Contiq Install Share");
+    p.shi2_max_uses = 4;
+    p.shi2_current_uses = 0;
+    p.shi2_path = TEXT("C:\\of_v0.10.0_vs2017_release\\apps\\myApps\\myContiq\\bin\\data");
+    p.shi2_passwd = NULL; // no password
+    p.shi2_permissions = ACCESS_ALL;;// ACCESS_READ;
+    NET_API_STATUS status = NetShareAdd(NULL, 2, (LPBYTE)&p, &parm_err);
+    return;
     ofDirectory dir("ContiqManifest");
     if (dir.create()) {
         ofLogNotice("ofDirectory") << "created: " << dir.path();
@@ -499,16 +541,16 @@ void createShare(LPWSTR name) {
         p.shi2_remark = TEXT("Contiq Install Share");
         p.shi2_max_uses = 1;
         p.shi2_current_uses = 0;
-        p.shi2_path = TEXT("C:\\of_v0.10.0_vs2017_release\\apps\\myApps\\myContiq\\bin\\data");
+        p.shi2_path = TEXT("C:\\of_v0.10.0_vs2017_release\\apps\\myApps\\myContiq\\bin\\data\\ContiqManifest");
         p.shi2_passwd = NULL; // no password
-        p.shi2_permissions = ACCESS_READ;
+        p.shi2_permissions = 0;// ACCESS_READ;
         NET_API_STATUS status = NetShareAdd(NULL, 2, (LPBYTE)&p, &parm_err);
+       
         if (!status) {
             ofLogNotice("NetShareAdd") << "created: " << p.shi2_netname;
         }
         else {
-            DWORD dw = GetLastError();
-            ofLogFatalError("NetShareAdd") << "failed to create: " << p.shi2_netname << " error " << dw;
+            ofLogFatalError("NetShareAdd") << "failed to create: " << p.shi2_netname << " error " << status;
         }
     }
     else {
@@ -581,7 +623,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
 
     _variant_t result;
 
-    if (lpParam != (LPVOID)1) {
+    //if (lpParam != (LPVOID)1) {
         // Get the OS collection 
         AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, L"OperatingSystem", 0);
         if (result.vt != VT_EMPTY) {
@@ -594,7 +636,7 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
         if (result.vt != VT_EMPTY) {
             _putws(result.bstrVal);
         }
-    }
+   // }
 
     // Create a new Presentation. (i.e. Application.Presentations.Add) 
     _variant_t pres;
@@ -715,14 +757,21 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
         parse(parent, UICommand(_bstr_t(L"OK"))); // OK - but only tthis OK --- pass in somehow
         parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
         parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
-        DWORD e = NetShareDel(NULL, L"Contiq", 0L);
+        DWORD e = NetShareDel(NULL, L"data", 0L);
         if (e == NERR_NetNameNotFound) {
 
         }
     }
     else {
         parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
-        parse(parent, UICommand(_bstr_t(L"Insert"))); // File
+        parse(parent, UICommand(_bstr_t(L"Ribbon Tabs"), UICommand::Select)); //  NetUIRibbonTab
+        parse(parent, UICommand(_bstr_t(L"Insert"), UICommand::Select)); //  NetUIRibbonTab
+        parse(parent, UICommand(_bstr_t(L"Lower Ribbon"), UICommand::Select)); //  group
+        parse(parent, UICommand(_bstr_t(L"Add-ins"), UICommand::ExpandCollapse)); //  NetUIRibbonTab
+        parse(parent, UICommand(_bstr_t(L"My Add-ins"), UICommand::Invoke)); //  NetUIRibbonTab
+        parse(parent, UICommand(_bstr_t(L"Store"), UICommand::Invoke)); //  NetUIRibbonTab
+        IUIAutomationElement*parent2 = GetTopLevelWindowByName(L"Office Addins");
+        parse(parent, UICommand(_bstr_t(L"My Add-ins"), UICommand::ExpandCollapse)); //  NetUIRibbonTab
     }
     //1) Go to Insert > Click on "My Add-ins" > Go to "SHARED FOLDER" tab > Select Contiq plugin and click Add.
     if (lpParam != (LPVOID)1) {
@@ -874,7 +923,7 @@ DWORD FindProcessId(const std::wstring& processName){
 }
 //https://docs.microsoft.com/en-us/officeupdates/update-history-office-2019
     void ofApp::setup(){
-
+       // createShare(L"Contiq");
         do {
             // debuger holds on to this
             if (0 && FindProcessId(L"POWERPNT.EXE")) {
@@ -885,7 +934,7 @@ DWORD FindProcessId(const std::wstring& processName){
             }
         } while (true);
 
-        HANDLE hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, NULL, 0, NULL);
+        HANDLE hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, (LPVOID)1, 0, NULL);
         WaitForSingleObject(hThread, INFINITE);
         CloseHandle(hThread);        
 
