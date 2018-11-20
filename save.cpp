@@ -1,4 +1,4 @@
- #include <windows.h>
+#include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -13,7 +13,7 @@
 #include <uiautomation.h>
 #include <comutil.h>
 #include <tlhelp32.h>
-
+#include <comip.h>
 #include "ofApp.h"
 #include "ofxXmlPoco.h"
 #pragma comment(lib, "Netapi32.lib")
@@ -399,8 +399,7 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
     va_list marker;
     va_start(marker, cArgs);
 
-    if (!pDisp)
-    {
+    if (!pDisp)    {
         _putws(L"NULL IDispatch passed to AutoWrap()");
         _exit(0);
         return E_INVALIDARG;
@@ -414,10 +413,8 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
 
     // Get DISPID for name passed 
     hr = pDisp->GetIDsOfNames(IID_NULL, &ptName, 1, LOCALE_USER_DEFAULT, &dispID);
-    if (FAILED(hr))
-    {
-        wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n",
-            ptName, hr);
+    if (FAILED(hr))    {
+        wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n", ptName, hr);
         _exit(0);
         return hr;
     }
@@ -425,8 +422,7 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
     // Allocate memory for arguments 
     VARIANT *pArgs = new VARIANT[cArgs + 1];
     // Extract arguments... 
-    for (int i = 0; i < cArgs; i++)
-    {
+    for (int i = 0; i < cArgs; i++)    {
         pArgs[i] = va_arg(marker, VARIANT);
     }
 
@@ -435,8 +431,7 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
     dp.rgvarg = pArgs;
 
     // Handle special-case for property-puts 
-    if (autoType & DISPATCH_PROPERTYPUT)
-    {
+    if (autoType & DISPATCH_PROPERTYPUT)    {
         dp.cNamedArgs = 1;
         dp.rgdispidNamedArgs = &dispidNamed;
     }
@@ -488,7 +483,7 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
 // 
 DWORD GetModuleDirectory(LPWSTR pszDir, DWORD nSize);
 
-void createShare(const std::wstring& name) {
+void createShare(LPWSTR name) {
     ofDirectory dir("ContiqManifest");
     if (dir.create()) {
         ofLogNotice("ofDirectory") << "created: " << dir.path();
@@ -496,22 +491,24 @@ void createShare(const std::wstring& name) {
         ofxXmlPoco xml;
         //xml.setTo(getXML());
         SHARE_INFO_2 p;
+        memset(&p, 0, sizeof(p));
         DWORD parm_err = 0;
         // be sure to delete when done
-        p.shi2_netname = (wchar_t*)name.c_str(); // make a guid name
+        p.shi2_netname = TEXT("Contiq"); // make a guid name
         p.shi2_type = STYPE_DISKTREE;
         p.shi2_remark = TEXT("Contiq Install Share");
-        p.shi2_permissions = 0;
         p.shi2_max_uses = 1;
         p.shi2_current_uses = 0;
-        p.shi2_path = TEXT(".");
+        p.shi2_path = TEXT("C:\\of_v0.10.0_vs2017_release\\apps\\myApps\\myContiq\\bin\\data");
         p.shi2_passwd = NULL; // no password
+        p.shi2_permissions = ACCESS_READ;
         NET_API_STATUS status = NetShareAdd(NULL, 2, (LPBYTE)&p, &parm_err);
         if (!status) {
             ofLogNotice("NetShareAdd") << "created: " << p.shi2_netname;
         }
         else {
-            ofLogFatalError("NetShareAdd") << "failed to create: " << p.shi2_netname << " error " << GetLastError();
+            DWORD dw = GetLastError();
+            ofLogFatalError("NetShareAdd") << "failed to create: " << p.shi2_netname << " error " << dw;
         }
     }
     else {
@@ -531,8 +528,6 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     // [-or-] CoInitialize(NULL); 
     // [-or-] CoCreateInstance(NULL); 
     CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-
-
     ///////////////////////////////////////////////////////////////////////// 
     // Create the PowerPoint.Application COM object using C++ and COM APIs. 
     //  
@@ -555,7 +550,6 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     clsid = CLSID_Application;*/
 
     // Start the server and get the IDispatch interface 
-
     IDispatch *pPpApp = NULL;
     hr = CoCreateInstance(        // [-or-] CoCreateInstanceEx, CoGetObject 
         clsid,                    // CLSID of the server 
@@ -568,9 +562,8 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
         wprintf(L"PowerPoint is not registered properly w/err 0x%08lx\n", hr);
         return 1;
     }
-
+    _variant_t app(pPpApp, FALSE);
     _putws(L"PowerPoint.Application is started");
-
 
     ///////////////////////////////////////////////////////////////////////// 
     // Make PowerPoint invisible. (i.e. Application.Visible = 0) 
@@ -582,133 +575,109 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     //    x.vt = VT_I4; 
     //    x.lVal = 0;    // Office::MsoTriState::msoFalse 
     //    hr = AutoWrap(DISPATCH_PROPERTYPUT, NULL, pPpApp, L"Visible", 1, x); 
-   // } 
+    //_variant_t x();
+   // AutoWrap(DISPATCH_PROPERTYPUT, NULL, app, L"Visible", 1, x);
+    // } 
 
-    // Get the OS collection 
-    IDispatch *pOS = NULL;
-    {
-        _variant_t result;
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"OperatingSystem", 0);
-        pOS = result.pdispVal;
-        _putws(result.bstrVal);
+    _variant_t result;
+
+    if (lpParam != (LPVOID)1) {
+        // Get the OS collection 
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, L"OperatingSystem", 0);
+        if (result.vt != VT_EMPTY) {
+            _putws(result.bstrVal);
+        }
+
+        // Get the build todo enforce versions here or at the file version level?
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, L"Build", 0);
+        if (result.vt != VT_EMPTY) {
+            _putws(result.bstrVal);
+        }
     }
 
-    // Get the build 
-    IDispatch *pBuild = NULL;
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"Build", 0);
-        pBuild = result.pdispVal;
-        _putws(result.bstrVal);
-    }
-
-    ///////////////////////////////////////////////////////////////////////// 
     // Create a new Presentation. (i.e. Application.Presentations.Add) 
-    //  
-    IDispatch *pPres = NULL;
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"Presentations", 0);
-        pPres = result.pdispVal;
+    _variant_t pres;
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, L"Presentations", 0);
+    if (result.vt != VT_EMPTY) {
+        pres = result.pdispVal;
     }
 
     // Call Presentations.Add to create a new presentation
-    IDispatch *pPre = NULL;
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_METHOD, &result, pPres, L"Add", 0);
-        pPre = result.pdispVal;
+    _variant_t pre;
+    result.Clear();
+    AutoWrap(DISPATCH_METHOD, result.GetAddress(), pres, L"Add", 0);
+    if (result.vt != VT_EMPTY) {
+        pre = result.pdispVal;
+        _putws(L"A new presentation is created");
     }
 
-    _putws(L"A new presentation is created");
     /////////////////////////////////////////////////////////////////////////
     // Insert a new Slide and add some text to it. 
     //  
 
     // Get the Slides collection 
-    IDispatch *pSlides = NULL;
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pPre, L"Slides", 0);
-        pSlides = result.pdispVal;
+    _variant_t slides;
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), pre, L"Slides", 0);
+    if (result.vt != VT_EMPTY) {
+        slides = result.pdispVal;
     }
 
     // Insert a new slide 
     _putws(L"Insert a slide");
 
-    IDispatch *pSlide = NULL;
-    {
-        VARIANT vtIndex;
-        vtIndex.vt = VT_I4;
-        vtIndex.lVal = 1;
-
-        VARIANT vtLayout;
-        vtLayout.vt = VT_I4;
-        vtLayout.lVal = 2;    // PowerPoint::PpSlideLayout::ppLayoutText 
-
-        VARIANT result;
-        VariantInit(&result);
-        // If there are more than 1 parameters passed, they MUST be pass in  
-        // reversed order. Otherwise, you may get the error 0x80020009. 
-        AutoWrap(DISPATCH_METHOD, &result, pSlides, L"Add", 2, vtLayout, vtIndex);
-        pSlide = result.pdispVal;
+    _variant_t slide;
+    _variant_t vtIndex(1);
+    _variant_t vtLayout(2);
+    result.Clear();
+    // If there are more than 1 parameters passed, they MUST be pass in  
+    // reversed order. Otherwise, you may get the error 0x80020009. 
+    AutoWrap(DISPATCH_METHOD, result.GetAddress(), slides, L"Add", 2, vtLayout, vtIndex);
+    if (result.vt != VT_EMPTY) {
+        slide = result.pdispVal;
     }
 
     // Add some texts to the slide 
     _putws(L"Add some texts");
 
-    IDispatch *pShapes = NULL;        // pSlide->Shapes 
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pSlide, L"Shapes", 0);
-        pShapes = result.pdispVal;
-    }
-    IDispatch *pShape = NULL;        // pShapes->Item(1) 
-    {
-        VARIANT vtIndex;
-        vtIndex.vt = VT_I4;
-        vtIndex.lVal = 1;
-
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_METHOD, &result, pShapes, L"Item", 1, vtIndex);
-        pShape = result.pdispVal;
+    _variant_t shapes;
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), slide, L"Shapes", 0);
+    if (result.vt != VT_EMPTY) {
+        shapes = result.pdispVal;
     }
 
-    IDispatch *pTxtFrame = NULL;    // pShape->TextFrame 
-    {
-        VARIANT result;
-        VariantInit(&result);
-        hr = AutoWrap(DISPATCH_PROPERTYGET, &result, pShape, L"TextFrame", 0);
-        pTxtFrame = result.pdispVal;
+    _variant_t shape;
+    vtIndex.Clear();
+    vtIndex = 1;
+    AutoWrap(DISPATCH_METHOD, result.GetAddress(), shapes, L"Item", 1, vtIndex);
+    if (result.vt != VT_EMPTY) {
+        shape = result.pdispVal;
     }
 
-    IDispatch *pTxtRange = NULL;    // pTxtFrame->TextRange 
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pTxtFrame, L"TextRange", 0);
-        pTxtRange = result.pdispVal;
+    _variant_t frame;
+    result.Clear();
+    hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), shape, L"TextFrame", 0);
+    if (result.vt != VT_EMPTY) {
+        frame = result.pdispVal;
     }
 
-    {
-        VARIANT x;
-        x.vt = VT_BSTR;
-        x.bstrVal = SysAllocString(L"Welcome To Contiq");
-        AutoWrap(DISPATCH_PROPERTYPUT, NULL, pTxtRange, L"Text", 1, x);
-        VariantClear(&x);
+    _variant_t range;
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), frame, L"TextRange", 0);
+    if (result.vt != VT_EMPTY) {
+        range = result.pdispVal;
     }
+
+    _variant_t welcome(L"Welcome To Contiq");
+    AutoWrap(DISPATCH_PROPERTYPUT, NULL, range, L"Text", 1, welcome);
 
     _bstr_t caption;
-    {
-        VARIANT result;
-        VariantInit(&result);
-        AutoWrap(DISPATCH_PROPERTYGET, &result, pPpApp, L"Caption", 0);
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, L"Caption", 0);
+    if (result.vt != VT_EMPTY) {
         caption = result.bstrVal;
         _putws(result.bstrVal);
     }
@@ -720,34 +689,44 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     std::wstring cap = (wchar_t*)caption;
     cap += L" - PowerPoint";
     IUIAutomationElement*parent = GetTopLevelWindowByName(cap);// (L"PowerPoint"
+    if (lpParam != (LPVOID)1) {
+        createShare(L"Contiq");
+        wchar_t  infoBuf[MAX_COMPUTERNAME_LENGTH + 1];
+        DWORD  bufCharCount = MAX_COMPUTERNAME_LENGTH + 1;
+        GetComputerNameW(infoBuf, &bufCharCount);
+        std::wstring share;
+        share = L"\\\\";
+        share += infoBuf;
+        share += L"\\Contiq";
+        parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
+        parse(parent, UICommand(_bstr_t(L"File Tab"))); // File
+        parse(parent, UICommand(_bstr_t(L"Options"))); // Options
+        parse(parent, UICommand(_bstr_t(L"Trust Center"), UICommand::Select));//Trust Center
+        parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
+        parse(parent, UICommand(_bstr_t(L"Trust access to the VBA project object model"), UICommand::EnableToggle)); // Trust access to the VBA project object model
+        parse(parent, UICommand(_bstr_t(L"OK"))); // knock down any error screen 
+        parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
+        parse(parent, UICommand(_bstr_t(L"Trusted Add-in Catalogs"))); // button
+        parse(parent, UICommand(_bstr_t(L"Catalog Url"), share, UICommand::Insert)); // edit field
+        parse(parent, UICommand(_bstr_t(L"Add catalog"))); // button
+        parse(parent, UICommand(_bstr_t(L"Show in Menu"), UICommand::EnableToggle));
+        parse(parent, UICommand(_bstr_t(L"OK"))); // knock down any possible error screen 
+        parse(parent, UICommand(_bstr_t(L"Show in Menu"), UICommand::EnableToggle)); // make sure its set if there was a knock down
+        parse(parent, UICommand(_bstr_t(L"OK"))); // OK - but only tthis OK --- pass in somehow
+        parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
+        parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
+        DWORD e = NetShareDel(NULL, L"Contiq", 0L);
+        if (e == NERR_NetNameNotFound) {
 
-    parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
-    parse(parent, UICommand(_bstr_t(L"File Tab"))); // File
-    parse(parent, UICommand(_bstr_t(L"Options"))); // Options
-    parse(parent, UICommand(_bstr_t(L"Trust Center"), UICommand::Select));//Trust Center
-    parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
-    parse(parent, UICommand(_bstr_t(L"Trust access to the VBA project object model"), UICommand::EnableToggle)); // Trust access to the VBA project object model
-    parse(parent, UICommand(_bstr_t(L"OK"))); // knock down any error screen 
-    parse(parent, UICommand(_bstr_t(L"Trust Center Settings..."))); // button
-    createShare(L"data");
-    wchar_t  infoBuf[MAX_COMPUTERNAME_LENGTH + 1];
-    DWORD  bufCharCount = MAX_COMPUTERNAME_LENGTH + 1;
-    GetComputerNameW(infoBuf, &bufCharCount);
-    std::wstring share = L"\\\\";
-    share += infoBuf;
-    share += L"\\data";
-    parse(parent, UICommand(_bstr_t(L"Trusted Add-in Catalogs"))); // button
-    parse(parent, UICommand(_bstr_t(L"Catalog Url"), share, UICommand::Insert)); // edit field
-    parse(parent, UICommand(_bstr_t(L"Add catalog"))); // button
-    parse(parent, UICommand(_bstr_t(L"OK"))); // knock down any error screen 
-    parse(parent, UICommand(_bstr_t(L"Show in Menu"), UICommand::EnableToggle));
-    
-            // close here once installed --- how?
-    // can we delete this when done? NetShareDel(NULL, L"data", 0L);
-    parse(parent, UICommand(_bstr_t(L"OK"))); // OK - but only tthis OK --- pass in somehow
-    parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
-    parse(parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
-
+        }
+    }
+    else {
+        parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
+        parse(parent, UICommand(_bstr_t(L"Insert"))); // File
+    }
+    //1) Go to Insert > Click on "My Add-ins" > Go to "SHARED FOLDER" tab > Select Contiq plugin and click Add.
+    if (lpParam != (LPVOID)1) {
+    }
 
     ///////////////////////////////////////////////////////////////////////// 
     // Save the presentation as a pptx file and close it. 
@@ -791,45 +770,16 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     */
 
     // pPre->Close() 
-    AutoWrap(DISPATCH_METHOD, NULL, pPre, L"Close", 0);
+    AutoWrap(DISPATCH_METHOD, NULL, pre, L"Close", 0);
 
 
     ///////////////////////////////////////////////////////////////////////// 
     // Quit the PowerPoint application. (i.e. Application.Quit()) 
     //  
     _putws(L"Quit the PowerPoint application");
-    AutoWrap(DISPATCH_METHOD, NULL, pPpApp, L"Quit", 0);
+    AutoWrap(DISPATCH_METHOD, NULL, app, L"Quit", 0);
 
     automation->Release();
-
-    ///////////////////////////////////////////////////////////////////////// 
-    // Release the COM objects. 
-    //  
-    if (pTxtRange != NULL)  {
-        pTxtRange->Release();
-    }
-    if (pTxtFrame != NULL)  {
-        pTxtFrame->Release();
-    }
-    if (pShape != NULL)  {
-        pShape->Release();
-    }
-    if (pShapes != NULL)  {
-        pShapes->Release();
-    }
-    if (pSlide != NULL)   {
-        pSlide->Release();
-    }
-    if (pSlides != NULL)  {
-        pSlides->Release();
-    }
-
-    if (pPre != NULL)  {
-        pPre->Release();
-    }
-    if (pPpApp != NULL) {
-        pPpApp->Release();
-    }
 
     // Uninitialize COM for this thread 
     CoUninitialize();
@@ -939,7 +889,7 @@ DWORD FindProcessId(const std::wstring& processName){
         WaitForSingleObject(hThread, INFINITE);
         CloseHandle(hThread);        
 
-        hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, NULL, 0, NULL);
+        hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, (LPVOID)1, 0, NULL);
         WaitForSingleObject(hThread, INFINITE);
         CloseHandle(hThread);
 
