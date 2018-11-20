@@ -1,4 +1,4 @@
-#include <windows.h>
+ #include <windows.h>
 #include <lm.h>
 #include <tchar.h>
 #include <processthreadsapi.h>
@@ -258,9 +258,12 @@ public:
     std::wstring data;
 };
 void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
+    if (!pRoot) {
+        return;
+    }
     IUIAutomationElement* pFound;//bugbug we do not free this
     IUIAutomationElementArray* all;//bugbug we do not free this
-    ofSleepMillis(1000);
+    ofSleepMillis(100);
         // Get the desktop element
         //HRESULT hr = automation->GetRootElement(&pRoot);
 
@@ -286,34 +289,32 @@ void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
                     if (name == cmd.target && cmd.cmd == UICommand::Parse) {
                     }
                     // helpful https://docs.microsoft.com/en-gb/windows/desktop/WinAuto/uiauto-controlpatternsoverview
-                    if (0 && name == cmd.target) {
+                    if (name == cmd.target) {
                         IItemContainerProvider *pcont; // UIA_PaneControlTypeId  UIA_GroupControlTypeId
                         pFound->GetCurrentPatternAs(UIA_GroupControlTypeId, __uuidof(IUIAutomationItemContainerPattern), (void **)&pcont);
 
                         IUIAutomationElementArray *parray;
                         pFound->GetCurrentPatternAs(UIA_GroupControlTypeId, __uuidof(IUIAutomationElementArray), (void **)&parray);
 
-                        IUIAutomationTogglePattern * pInvoke;
-                        pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pInvoke);
-                        if (pInvoke) {
-                            ToggleState state;
-                            pInvoke->get_CurrentToggleState(&state);
-                            if (state != ToggleState_On) {
-                                pInvoke->Toggle(); // 
-                            }
+                        IUIAutomationTogglePattern * ptoggle; // none of these are free
+                        pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&ptoggle);
+                        if (ptoggle) {
                         }
                         IUIAutomationSelectionItemPattern * pSelect;
                         pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
                         if (pSelect) {
-                            pSelect->Select();
+                            //pSelect->Select();
                         }
                         IUIAutomationExpandCollapsePattern * pUniverse;
                         pFound->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, __uuidof(IUIAutomationExpandCollapsePattern), (void **)&pUniverse);
                         if (pUniverse) {
                             pUniverse->Expand();
                         }
-                        invoke(pFound);
-                        return;
+                        IUIAutomationInvokePattern * pInvoke;
+                        pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+                        if (pInvoke) {
+                            int i = 0;
+                        }
                     }
                     //https://docs.microsoft.com/en-us/windows/desktop/winauto/uiauto-implementingselectionitem
                     _bstr_t outspace(L"NetUIOutSpaceButton");
@@ -323,11 +324,18 @@ void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
                         pFound->GetCurrentPatternAs(UIA_ExpandCollapsePatternId, __uuidof(IUIAutomationExpandCollapsePattern), (void **)&pUniverse);
                         if (pUniverse) {
                             pUniverse->Expand();
+                            pUniverse->Release();
+                            return;
                         }
                     }
                     if (name == cmd.target && cmd.cmd == UICommand::Invoke) { // do we need id == fileID ?
-                        invoke(pFound);
-                        return;
+                        IUIAutomationInvokePattern * pInvoke;
+                        pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+                        if (pInvoke) {
+                            pInvoke->Invoke();
+                            pInvoke->Release();
+                            return;
+                        }
                     }
                     if (name == cmd.target && cmd.cmd == UICommand::Insert) {
                         BOOL enabled;
@@ -345,11 +353,10 @@ void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
                             pFound->GetCurrentPatternAs(UIA_ValuePatternId, __uuidof(IUIAutomationValuePattern), (void **)&pval);
                             pFound->SetFocus();
                             if (pval) {
-                                if (pval) {
-                                    _bstr_t val(cmd.data.c_str());
-                                    pval->SetValue(val.GetBSTR());
-                                    return;
-                                }
+                                _bstr_t val(cmd.data.c_str());
+                                pval->SetValue(val.GetBSTR());
+                                pval->Release();
+                                return;
                             }
                         }
                     }
@@ -359,19 +366,22 @@ void parse(IUIAutomationElement* pRoot, UICommand &cmd) {
                         pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
                         if (pSelect) {
                             pSelect->Select();
+                            pSelect->Release();
+                            return;
                         }
                     }
 
                     if (name == cmd.target && cmd.cmd == UICommand::EnableToggle) {
                         // IToggleProvider UIA_TextPatternId
-                        IUIAutomationTogglePattern * pInvoke;
-                        pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pInvoke);
-                        if (pInvoke) {
+                        IUIAutomationTogglePattern * pToggle;
+                        pFound->GetCurrentPatternAs(UIA_TogglePatternId, __uuidof(IUIAutomationTogglePattern), (void **)&pToggle);
+                        if (pToggle) {
                             ToggleState state;
-                            pInvoke->get_CurrentToggleState(&state);
+                            pToggle->get_CurrentToggleState(&state);
                             if (state != ToggleState_On) {
-                                pInvoke->Toggle(); // 
+                                pToggle->Toggle(); // 
                             }
+                            pToggle->Release();
                             return;
                         }
                     }
@@ -765,17 +775,17 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam)
     else {
         parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
         parse(parent, UICommand(_bstr_t(L"Ribbon Tabs"), UICommand::Select)); //  NetUIRibbonTab
-        parse(parent, UICommand(_bstr_t(L"Insert"), UICommand::Select)); //  NetUIRibbonTab
+        parse(parent, UICommand(_bstr_t(L"Insert"), UICommand::Select)); 
         parse(parent, UICommand(_bstr_t(L"Lower Ribbon"), UICommand::Select)); //  group
-        parse(parent, UICommand(_bstr_t(L"Add-ins"), UICommand::ExpandCollapse)); //  NetUIRibbonTab
-        parse(parent, UICommand(_bstr_t(L"My Add-ins"), UICommand::Invoke)); //  NetUIRibbonTab
-        parse(parent, UICommand(_bstr_t(L"Store"), UICommand::Invoke)); //  NetUIRibbonTab
-        IUIAutomationElement*parent2 = GetTopLevelWindowByName(L"Office Addins");
-        parse(parent, UICommand(_bstr_t(L"My Add-ins"), UICommand::ExpandCollapse)); //  NetUIRibbonTab
+        parse(parent, UICommand(_bstr_t(L"Store"), UICommand::Invoke)); 
+        //IUIAutomationElement*parent2 = GetTopLevelWindowByName(L"Office Add-ins");
+        parse(parent, UICommand(_bstr_t(L"SHARED FOLDER"), UICommand::Invoke));
+        parse(parent, UICommand(_bstr_t(L"Contiq Companion Beta"), UICommand::Select));
+        parse(parent, UICommand(_bstr_t(L"Add"), UICommand::Invoke));
+        if (lpParam != (LPVOID)1) {
+        }
     }
     //1) Go to Insert > Click on "My Add-ins" > Go to "SHARED FOLDER" tab > Select Contiq plugin and click Add.
-    if (lpParam != (LPVOID)1) {
-    }
 
     ///////////////////////////////////////////////////////////////////////// 
     // Save the presentation as a pptx file and close it. 
@@ -938,9 +948,9 @@ DWORD FindProcessId(const std::wstring& processName){
         WaitForSingleObject(hThread, INFINITE);
         CloseHandle(hThread);        
 
-        hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, (LPVOID)1, 0, NULL);
-        WaitForSingleObject(hThread, INFINITE);
-        CloseHandle(hThread);
+        //hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, (LPVOID)1, 0, NULL);
+        //WaitForSingleObject(hThread, INFINITE);
+        //CloseHandle(hThread);
 
         return;
 
