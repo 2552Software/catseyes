@@ -70,11 +70,10 @@ private:
 public:
     int _eventCount;
     DWORD targetPID;
-    IUIAutomationElement* pRoot;
     IUIAutomation* pAutomation;
 
     // Constructor.
-    EventHandler(DWORD pid, IUIAutomationElement*r, IUIAutomation* au) : _refCount(1), _eventCount(0), targetPID(pid), pRoot(r), pAutomation(au)    {
+    EventHandler(DWORD pid, IUIAutomation* au) : _refCount(1), _eventCount(0), targetPID(pid), pAutomation(au)    {
     }
 
     // IUnknown methods.
@@ -109,45 +108,80 @@ public:
         this->AddRef();
         return S_OK;
     }
-
+    void select(_variant_t target, IUIAutomationElement * pSender) {
+        IUIAutomationCondition * pCondition;
+        _variant_t element;
+        pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
+        IUIAutomationElement* pFound = nullptr;
+        HRESULT hr = pSender->FindFirst(TreeScope_Descendants, pCondition, &pFound);
+        if (pFound) {
+            IUIAutomationSelectionItemPattern*sel = nullptr;
+            pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sel);
+            if (sel) {
+                sel->Select();
+                sel->Release();
+            }
+            pFound->Release();
+        }
+        pCondition->Release();
+    }
+    void invoke(_variant_t target, IUIAutomationElement * pSender) {
+        IUIAutomationCondition * pCondition;
+        _variant_t element;
+        pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
+        IUIAutomationElement* pFound = nullptr;
+        HRESULT hr = pSender->FindFirst(TreeScope_Subtree, pCondition, &pFound);
+        if (pFound) {
+            IUIAutomationInvokePattern * pInvoke = nullptr;
+            hr = pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+            if (pInvoke) {
+                pInvoke->Invoke();
+                pInvoke->Release();
+            }
+            pFound->Release();
+        }
+        pCondition->Release();
+    }
+    bool isMe(IUIAutomationElement * pSender) {
+        int  pid;
+        pSender->get_CurrentProcessId(&pid);
+        return pid == targetPID;
+    }
     // IUIAutomationEventHandler methods
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement * pSender, EVENTID eventID)    {
         _eventCount++;
-        BOOL b;
-        _bstr_t cls;
-        _bstr_t name;
-        _bstr_t id; // just call the seach each time, super easy parser for install at least
-        echoElement(pSender, _bstr_t(L"No"), b, cls, name, id);
+        std::wstring name;
+        if (isMe(pSender)) {
+            _bstr_t senderName;
+            size_t index = -1;
+            pSender->get_CurrentName(senderName.GetAddress());
+            if (senderName.length() > 0) {
+                name = (wchar_t*)senderName;
+            }
+        }
+        _bstr_t senderName2;
 
         switch (eventID)        {
         case UIA_Text_TextSelectionChangedEventId:
             wprintf(L">> Event UIA_Text_TextSelectionChangedEventId Received! (count: %d)\n", _eventCount);
             break;
+        case UIA_StructureChangedEventId:
+            pSender->get_CurrentName(senderName2.GetAddress());
+            wprintf(L">> Event UIA_StructureChangedEventId Received! (count: %d) %s\n", _eventCount, (wchar_t*)senderName2);
+            break;
+        case UIA_AsyncContentLoadedEventId:
+            pSender->get_CurrentName(senderName2.GetAddress());
+            wprintf(L">> Event UIA_AsyncContentLoadedEventId Received! (count: %d) %s\n", _eventCount, (wchar_t*)senderName2);
+            if (isMe(pSender)) {
+                int i = 0;
+            }
+            break;
         case UIA_MenuOpenedEventId:
-            int  pid;
-            pSender->get_CurrentProcessId(&pid);
-            if (pid == targetPID) {
+            if (isMe(pSender)) {
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/AutomationElementExtensions.cs,1a83d951b02044f1,references
-                wprintf_s(L"%s pid %d target pid %d\n", static_cast<wchar_t*>(name), pid, targetPID);
-                _bstr_t senderName;
-                size_t index = -1;
-                pSender->get_CurrentName(senderName.GetAddress());
-                std::wstring name = (wchar_t*)senderName;
+                //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/ScreenshotService.cs
                 if (name == L"File") {
-                    IUIAutomationCondition * pCondition;
-                    _variant_t target(L"Options");
-                    _variant_t element;
-                    pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);// CreateTrueCondition(&pCondition);
-                    IUIAutomationElement* pFound=nullptr;
-                    HRESULT hr = pRoot->FindFirst(TreeScope_Subtree, pCondition, &pFound);
-                    if (pFound) {
-                        IUIAutomationInvokePattern * pInvoke;
-                        hr = pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
-                        if (pInvoke) {
-                            pInvoke->Invoke();
-                        }
-                    }
-                    pCondition->Release();
+                    invoke(_variant_t(L"Options"), pSender);
                 }
             }
             break;
@@ -161,9 +195,18 @@ public:
             wprintf(L">> Event ToolTipClosed Received! (count: %d)\n", _eventCount);
             break;
         case UIA_Window_WindowOpenedEventId:
+            if (isMe(pSender)) {
+                if (name == L"PowerPoint Options") {
+                    select(_variant_t(L"Trust Center"), pSender);
+                }
+                wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
+            }
             wprintf(L">> Event WindowOpened Received! (count: %d)\n", _eventCount);
             break;
         case UIA_Window_WindowClosedEventId:
+            if (isMe(pSender)) {
+                wprintf(L"ME!>> Event WindowClosed Received! (count: %d)\n", _eventCount);
+            }
             wprintf(L">> Event WindowClosed Received! (count: %d)\n", _eventCount);
             break;
         default:
@@ -1084,6 +1127,8 @@ int wmain() {
         }
         _variant_t app(pPpApp, FALSE);
         _putws(L"PowerPoint.Application is started");
+        SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+        PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
 
         DWORD pid = FindProcessId(L"POWERPNT.EXE");
 
@@ -1112,9 +1157,6 @@ int wmain() {
             _putws(result.bstrVal);
         }
 
-        SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-        PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
-
         IUIAutomationElement* pRoot = nullptr;
         IUIAutomationElement* pFound = nullptr;
         hr = pAutomation->GetRootElement(&pRoot);
@@ -1134,42 +1176,10 @@ int wmain() {
             */
             return 0;
         }
-        IUIAutomationElementArray* all;//bugbug we do not free this
-        IUIAutomationCondition * pCondition;
-        pAutomation->CreateTrueCondition(&pCondition);
-        pRoot->FindAll(TreeScope_Subtree, pCondition, &all); // cache is see if we can find a better condition
-        pCondition->Release();
-        if (all && 0) {
-            int len;
-            all->get_Length(&len);
-            for (int i = 0; i < len; ++i) {
-                all->GetElement(i, &pFound);
-                BOOL b;
-                _bstr_t cls;
-                _bstr_t name;
-                _bstr_t id; // just call the seach each time, super easy parser for install at least
-                echoElement(pFound, _bstr_t(L"No"), b, cls, name, id);
-                _bstr_t test(L"Show In Menu");
-                _bstr_t test2(L"NetUIHWND");
-                // helpful https://docs.microsoft.com/en-gb/windows/desktop/WinAuto/uiauto-controlpatternsoverview
-            //https://github.com/Microsoft/Windows-classic-samples/blob/master/Samples/UIAutomationDocumentClient/cpp/UiaDocumentClient.cpp
-                int index = -1;
-                if (name.length() > 0) {
-                    std::wstring s = (wchar_t*)name;
-                    index = s.find(L"Contiq");
-                }
-                IUIAutomationInvokePattern * pInvoke;
-                pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
-                if (pInvoke) {
-                   //pInvoke->Invoke();
-                    pInvoke->Release();
-                }
-            }
-        }
-        //parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
+       //parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
         //parse(parent, UICommand(_bstr_t(L"File Tab"))); // File
 
-        pEHTemp = new EventHandler(pid, pRoot, pAutomation);
+        pEHTemp = new EventHandler(pid, pAutomation);
         if (pEHTemp == NULL)   {
         }
         wprintf(L"-Adding Event Handlers.\n");
@@ -1201,6 +1211,15 @@ int wmain() {
             ret = 1;
             goto cleanup;
         }
+        
+        hr = pAutomation->AddAutomationEventHandler(UIA_AsyncContentLoadedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
+        if (FAILED(hr))
+        {
+            ret = 1;
+            goto cleanup;
+        }
+        
+        hr = pAutomation->AddAutomationEventHandler(UIA_StructureChangedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
         hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
         if (FAILED(hr))
         {
@@ -1258,11 +1277,11 @@ int wmain() {
 
     //Windows::Foundation::Initialize();
 
-    struct Parm data;
-    CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&data.automation);
+    //struct Parm data;
+    //CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    //CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&data.automation);
     //data.events.setup(data.automation);
-    data.type = 0;
+   // data.type = 0;
     //HANDLE hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, &data, 0, NULL);
     //while (data.events.pEHTemp->wait)
      //   Sleep(100L);
@@ -1271,8 +1290,8 @@ int wmain() {
     //hThread = CreateThread(NULL, 0, AutomatePowerPointByCOMAPI, (LPVOID)1, 0, NULL);
     //WaitForSingleObject(hThread, INFINITE);
     //CloseHandle(hThread);
-    data.automation->RemoveAllEventHandlers();
-    data.automation->Release();
+    //data.automation->RemoveAllEventHandlers();
+   // data.automation->Release();
     CoUninitialize();
 
 }
