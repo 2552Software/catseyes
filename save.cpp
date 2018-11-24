@@ -1,4 +1,4 @@
-// install.cpp : This file contains the 'main' function. Program execution begins and ends there.
+  // install.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "pch.h"
@@ -168,6 +168,7 @@ bool set(IUIAutomationElement* pNode) {
     else {
         wprintf_s(L"insert null\n");
     }
+    return false;
 }
 bool insert(IUIAutomationElement* pNode, const std::wstring& data) {
     if (pNode) {
@@ -264,10 +265,12 @@ CComPtr<IUIAutomationElement> find(IUIAutomation* pAutomation, IUIAutomationElem
             CComPtr<IUIAutomationElement> pFound;
             all->GetElement(i, &pFound);
             _bstr_t cls;
-            pFound->get_CurrentClassName(cls.GetAddress());
-            std::wstring test = (wchar_t*)cls;
-            if (targetClass == test || targetClass.length() == 0) {
-                ret = pFound; // loop to see all values when debugging
+            HRESULT hr = pFound->get_CurrentClassName(cls.GetAddress());
+            if (!IS_ERROR(hr)) {
+                std::wstring test = (wchar_t*)cls;
+                if (targetClass == test || targetClass.length() == 0) {
+                    ret = pFound; // loop to see all values when debugging
+                }
             }
         }
     }
@@ -320,10 +323,12 @@ public:
     IDispatch* app;
     _variant_t presentation;
     IUIAutomationElement* pRoot;
+    HANDLE event;
+    int type;
 
     // Constructor.
-    EventHandler(IUIAutomation* au, IUIAutomationElement* ru) : 
-        _refCount(1), _eventCount(0), pid(0UL), pAutomation(au), pRoot(ru)    {
+    EventHandler(IUIAutomation* au, IUIAutomationElement* ru, HANDLE e, int t) :
+        _refCount(1), _eventCount(0), pid(0UL), pAutomation(au), pRoot(ru), event(e), type(t){
     }
 
     // IUnknown methods.
@@ -384,10 +389,22 @@ public:
         parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // OK - but only tthis OK --- pass in somehow
         parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
         parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
+        round 2
+        parse(parm->automation, parent, UICommand(_bstr_t(L"No"))); // first dlg box
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Ribbon Tabs"), UICommand::Select)); //  NetUIRibbonTab
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Insert"), UICommand::Select));
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Lower Ribbon"), UICommand::Select)); //  group
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Store"), UICommand::Invoke));
+        //IUIAutomationElement*parent2 = GetTopLevelWindowByName(L"Office Add-ins");
+        parse(parm->automation, parent, UICommand(_bstr_t(L"SHARED FOLDER"), UICommand::Invoke));
+
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Contiq"), UICommand::ListItem));
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Contiq Companion Beta"), UICommand::ListItem));
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Contiq Companion Beta.Use arrow keys to navigate the items
         */
         switch (eventID)        {
         case UIA_MenuOpenedEventId:
-            if (isMe(pSender)) {
+            if (isMe(pSender) && type == 0) {
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/AutomationElementExtensions.cs,1a83d951b02044f1,references
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/ScreenshotService.cs
                 if (name == L"File") {
@@ -401,24 +418,27 @@ public:
         case UIA_Window_WindowOpenedEventId:
             if (isMe(pSender)) {
                 if (name.find(L" - PowerPoint") != std::string::npos) {
-                    // events ready, initiate
                     invoke(find(pAutomation, pSender, _variant_t(L"No"), L"Button")); // clear dlg (are there more)? bugbug
-                    invoke(find(pAutomation, pSender, _variant_t(L"File Tab"), L"NetUIRibbonTab"));
+                    if (type == 0) {
+                        invoke(find(pAutomation, pSender, _variant_t(L"File Tab"), L"NetUIRibbonTab"));
+                    }
+                    else if (type == 1) {
+                        select(find(pAutomation, pSender, _variant_t(L"Ribbon Tabs"), L"NetUIPanViewer"));
+                        select(find(pAutomation, pSender, _variant_t(L"Insert"), L"NetUIRibbonTab"));
+                        select(find(pAutomation, pSender, _variant_t(L"Lower Ribbon"), L""));
+                        invoke(find(pAutomation, pSender, _variant_t(L"Store"), L""));
+                    }
                 }
-                else if (name == L"PowerPoint Options") {
-                    if (select(find(pAutomation, pSender, _variant_t(L"Trust Center"), L"NetUIListViewItem"))) {
-                        Sleep(500UL);
-                    }
-                    if (invoke(find(pAutomation, pSender, _variant_t(L"Trust Center Settings..."), L"NetUIButton"))) {
-                        Sleep(500UL);
-                    }
+                else if (name == L"Trust Center" && type == 0) {
                     if (invoke(find(pAutomation, pSender, _variant_t(L"Trusted Add-in Catalogs"), L"NetUIListViewItem"))) {
                         Sleep(500UL);
                     }
                     if (insert(find(pAutomation, pSender, _variant_t(L"Catalog Url"), L"NetUITextbox"), getShareName())) {
                         if (invoke(find(pAutomation, pSender, _variant_t(L"Add catalog"), L"NetUIButton"))) {
+                            Sleep(500UL);
                             if (set(find(pAutomation, pSender, _variant_t(L"Show in Menu"), L"NetUICheckbox"))) {
                                 bool b = invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton")); // ignore dup error
+                                invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton")); // ignore dup error
                                 if (invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton")) || b) {
                                     if (presentation.vt != VT_EMPTY) {
                                         AutoWrap(DISPATCH_METHOD, NULL, presentation, (LPOLESTR)L"Close", 0);
@@ -430,11 +450,24 @@ public:
                                             invoke(find(pAutomation, found, _variant_t(L"Close"), L""));
                                         }
                                         //AutoWrap(DISPATCH_METHOD, NULL, app, (LPOLESTR)L"Quit", 0);
+                                        wprintf(L"-Removing Event Handlers.\n");
+                                        // Remove event handlers etc
+                                        if (pAutomation) {
+                                            pAutomation->RemoveAllEventHandlers();
+                                        }
                                         app->Release();
+                                        SetEvent(event); // stop thread
                                     }
                                 }
                             }
                         }
+                    }
+                }
+                else if (name == L"PowerPoint Options" && type == 0) {
+                    if (select(find(pAutomation, pSender, _variant_t(L"Trust Center"), L"NetUIListViewItem"))) {
+                        Sleep(500UL);
+                    }
+                    if (invoke(find(pAutomation, pSender, _variant_t(L"Trust Center Settings..."), L"NetUIButton"))) {
                     }
                 }
                 wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
@@ -734,7 +767,6 @@ IUIAutomationElement* GetTopLevelWindowByName(IUIAutomation *automation, const s
     HRESULT hr = automation->GetRootElement(&pRoot);
     // Get a top-level element by name, such as "Program Manager"
     if (pRoot) {
-        IUIAutomationElement* element;
         IUIAutomationCondition* pCondition;
         VARIANT varProp;
         VariantInit(&varProp);
@@ -1287,13 +1319,16 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam) {
 
     return 0L;
 }
-
+struct EventData {
+    HANDLE  handles[2];
+    int type;
+};
 DWORD WINAPI events(LPVOID lpParam){
     HRESULT hr;
     int ret = 0;
     CComPtr<IUIAutomationElement> pRoot;
     EventHandler* pEvents = NULL;
-    HANDLE*  handles = (HANDLE*)lpParam;
+    EventData*pdata = (struct EventData*)lpParam;
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
     CComPtr<IUIAutomation> pAutomation;
     hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&pAutomation);
@@ -1307,8 +1342,8 @@ DWORD WINAPI events(LPVOID lpParam){
         wprintf(L"GetRootElement failed w/err 0x%08lx\n", hr);
         return 0;
     }
-
-    pEvents = new EventHandler(pAutomation, pRoot);
+    pdata->handles[1] = CreateEvent(NULL, TRUE, FALSE, NULL);
+    pEvents = new EventHandler(pAutomation, pRoot, pdata->handles[1], pdata->type);
     if (pEvents == NULL) {
         wprintf(L"EventHandler er\n");
         return 0;
@@ -1319,18 +1354,10 @@ DWORD WINAPI events(LPVOID lpParam){
     hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     
     // let others know we are ready then block for ever or someone frees the sem
-    handles[1] = CreateEvent(NULL, TRUE, FALSE, NULL);
     startPPT(pEvents, pAutomation);
-    SetEvent(handles[0]);
-    DWORD dw = WaitForSingleObject(handles[1], INFINITE);
+    SetEvent(pdata->handles[0]);
+    DWORD dw = WaitForSingleObject(pdata->handles[1], INFINITE);
     //getchar(); // put in a  real block
-
-    wprintf(L"-Removing Event Handlers.\n");
-
-    // Remove event handlers, release resources, and terminate
-    if (pAutomation != NULL)  {
-        hr = pAutomation->RemoveAllEventHandlers();
-    }
 
     if (pEvents != NULL)
         pEvents->Release();
@@ -1339,23 +1366,26 @@ DWORD WINAPI events(LPVOID lpParam){
     return 0;
 }
 
+void fireItup(int type) {
+    HANDLE  hThread;
+    DWORD id;
+    struct EventData data;
+    memset(&data, 0, sizeof(struct EventData));
+    data.type = type;
+    data.handles[0] = CreateEvent(NULL, TRUE, FALSE, NULL); 
+    hThread = CreateThread(NULL, 0, events, (LPVOID)&data, 0, &id);
+    DWORD dw = WaitForSingleObject(data.handles[0], INFINITE);
+    CloseHandle(data.handles[0]);
+    WaitForMultipleObjects(1, &hThread, TRUE, INFINITE);
+    if (data.handles[1]) {
+        CloseHandle(data.handles[1]);
+    }
+}
 int wmain() {
     std::wcout << L"Hello World!\n"; 
-    HANDLE  hThreadArray[2];
-    DWORD id;
-    HANDLE handles[2];
-    handles[0] = CreateEvent(NULL, TRUE, FALSE, NULL);      // Set  
-    handles[1] = nullptr;
-    hThreadArray[0] = CreateThread(NULL, 0, events, (LPVOID)&handles, 0, &id);
-    DWORD dw  = WaitForSingleObject(handles[0], INFINITE);
-    CloseHandle(handles[0]);
 
-    // end threads gracefully
-    //if (handles[1]) {
-      //  SetEvent(handles[1]);
-   // }
-    // threads exit upon error or when program is completed
-    WaitForMultipleObjects(1, hThreadArray, TRUE, INFINITE); // phase 1
+    fireItup(0);
+    fireItup(1);
 
     LPWSTR *szArglist;
     int nArgs;
