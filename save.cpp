@@ -1,5 +1,4 @@
-
- // install.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// install.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "pch.h"
@@ -7,6 +6,94 @@
 #pragma comment(lib, "Netapi32.lib")
 #pragma comment(lib, "Mincore.lib")
 #pragma comment(lib, "comsuppw.lib")
+
+// 
+//   FUNCTION: AutoWrap(int, VARIANT*, IDispatch*, LPOLESTR, int,...) 
+// 
+//   PURPOSE: Automation helper function. It simplifies most of the low-level  
+//      details involved with using IDispatch directly. Feel free to use it  
+//      in your own implementations. One caveat is that if you pass multiple  
+//      parameters, they need to be passed in reverse-order. 
+// 
+//   PARAMETERS: 
+//      * autoType - Could be one of these values: DISPATCH_PROPERTYGET,  
+//      DISPATCH_PROPERTYPUT, DISPATCH_PROPERTYPUTREF, DISPATCH_METHOD. 
+//      * pvResult - Holds the return value in a VARIANT. 
+//      * pDisp - The IDispatch interface. 
+//      * ptName - The property/method name exposed by the interface. 
+//      * cArgs - The count of the arguments. 
+// 
+//   RETURN VALUE: An HRESULT value indicating whether the function succeeds  
+//      or not.  
+// 
+//   EXAMPLE:  
+//      AutoWrap(DISPATCH_METHOD, NULL, pDisp, L"call", 2, parm[1], parm[0]); 
+// 
+HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptName, int cArgs...)
+{
+    // Begin variable-argument list 
+    va_list marker;
+    va_start(marker, cArgs);
+
+    if (!pDisp) {
+        _putws(L"NULL IDispatch passed to AutoWrap()");
+        return E_INVALIDARG;
+    }
+
+    // Variables used 
+    DISPPARAMS dp = { NULL, NULL, 0, 0 };
+    DISPID dispidNamed = DISPID_PROPERTYPUT;
+    DISPID dispID;
+    HRESULT hr;
+
+    // Get DISPID for name passed 
+    hr = pDisp->GetIDsOfNames(IID_NULL, &ptName, 1, LOCALE_USER_DEFAULT, &dispID);
+    if (FAILED(hr)) {
+        if (hr == RPC_E_SERVERCALL_RETRYLATER) {
+            wprintf(L"PowerPoint busy try again\n");
+        }
+        else {
+            wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n", ptName, hr);
+        }
+        return hr;
+    }
+
+    // Allocate memory for arguments 
+    VARIANT *pArgs = new VARIANT[cArgs + 1];
+    // Extract arguments... 
+    for (int i = 0; i < cArgs; i++) {
+        pArgs[i] = va_arg(marker, VARIANT);
+    }
+
+    // Build DISPPARAMS 
+    dp.cArgs = cArgs;
+    dp.rgvarg = pArgs;
+
+    // Handle special-case for property-puts 
+    if (autoType & DISPATCH_PROPERTYPUT) {
+        dp.cNamedArgs = 1;
+        dp.rgdispidNamedArgs = &dispidNamed;
+    }
+
+    // Make the call 
+    hr = pDisp->Invoke(dispID, IID_NULL, LOCALE_SYSTEM_DEFAULT, autoType, &dp, pvResult, NULL, NULL);
+    if (FAILED(hr)) {
+        if (hr == DISP_E_EXCEPTION) {
+            wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx DISP_E_EXCEPTION, really bad\n", ptName, dispID, hr);
+        }
+        else {
+            wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx\n", ptName, dispID, hr);
+        }
+        return hr;
+    }
+
+    // End variable-argument section 
+    va_end(marker);
+
+    delete[] pArgs;
+
+    return hr;
+}
 
 DWORD FindProcessId(const std::wstring& processName) {
 
@@ -60,9 +147,158 @@ void echoElement(IUIAutomationElement* element, const _bstr_t target, BOOL& b, _
         element->get_CurrentAutomationId(id.GetAddress());
         justEcho(target, L"id", id);
     }
-
 }
 
+void createSlide(IDispatch *app) {
+    if (!app) {
+        return;
+    }
+    // Create a new Presentation. (i.e. Application.Presentations.Add) 
+    _variant_t pres;
+    _variant_t result;
+    HRESULT hr;
+    hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Presentations", 0);
+    if (result.vt != VT_EMPTY) {
+        pres = result.pdispVal;
+    }
+    else {
+        wprintf(L"Presentations w/err 0x%08lx\n", hr);
+        return;
+    }
+    // Call Presentations.Add to create a new presentation
+    _variant_t pre;
+    if (pres.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_METHOD, result.GetAddress(), pres, (LPOLESTR)L"Add", 0);
+        if (result.vt != VT_EMPTY) {
+            pre = result.pdispVal;
+            _putws(L"A new presentation is created");
+        }
+    }
+    else {
+        wprintf(L"Add Presentations w/err 0x%08lx\n", hr);
+        return;
+    }
+
+    /////////////////////////////////////////////////////////////////////////
+    // Insert a new Slide and add some text to it. 
+    //  
+
+    _variant_t slides;
+    if (pre.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), pre, (LPOLESTR)L"Slides", 0);
+        if (result.vt != VT_EMPTY) {
+            slides = result.pdispVal;
+        }
+    }
+    else {
+        wprintf(L"Slides w/err 0x%08lx\n", hr);
+        return;
+    }
+    _variant_t slide;
+    _variant_t vtIndex(1);
+    _variant_t vtLayout(2);
+    if (slides.vt != VT_EMPTY) {
+        _putws(L"Insert a slide");
+
+        result.Clear();
+        // If there are more than 1 parameters passed, they MUST be pass in  
+        // reversed order. Otherwise, you may get the error 0x80020009. 
+        AutoWrap(DISPATCH_METHOD, result.GetAddress(), slides, (LPOLESTR)L"Add", 2, vtLayout, vtIndex);
+        if (result.vt != VT_EMPTY) {
+            slide = result.pdispVal;
+        }
+    }
+    else {
+        wprintf(L"Add Slides w/err 0x%08lx\n", hr);
+        return;
+    }
+
+    // Add some texts to the slide 
+    _putws(L"Add some texts");
+
+    _variant_t shapes;
+    if (slide.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), slide, (LPOLESTR)L"Shapes", 0);
+        if (result.vt != VT_EMPTY) {
+            shapes = result.pdispVal;
+        }
+    }
+    else {
+        wprintf(L"Shapes w/err 0x%08lx\n", hr);
+        return;
+    }
+
+    _variant_t shape;
+    if (shapes.vt != VT_EMPTY) {
+        vtIndex.Clear();
+        vtIndex = 1;
+        AutoWrap(DISPATCH_METHOD, result.GetAddress(), shapes, (LPOLESTR)L"Item", 1, vtIndex);
+        if (result.vt != VT_EMPTY) {
+            shape = result.pdispVal;
+        }
+    }
+    else {
+        wprintf(L"Item w/err 0x%08lx\n", hr);
+        return;
+    }
+
+    _variant_t frame;
+    if (shape.vt != VT_EMPTY) {
+        result.Clear();
+        HRESULT hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), shape, (LPOLESTR)L"TextFrame", 0);
+        if (result.vt != VT_EMPTY) {
+            frame = result.pdispVal;
+        }
+    }
+    else {
+        wprintf(L"TextFrame w/err 0x%08lx\n", hr);
+        return;
+    }
+
+    _variant_t range;
+    if (frame.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), frame, (LPOLESTR)L"TextRange", 0);
+        if (result.vt != VT_EMPTY) {
+            range = result.pdispVal;
+        }
+    }
+    else {
+        wprintf(L"TextRange w/err 0x%08lx\n", hr);
+        return;
+    }
+
+    if (range.vt != VT_EMPTY) {
+        _variant_t welcome(L"Welcome To Contiq");
+        AutoWrap(DISPATCH_PROPERTYPUT, NULL, range, (LPOLESTR)L"Text", 1, welcome);
+    }
+}
+
+bool insert(IUIAutomationElement* pNode, const std::wstring& data) {
+    if (pNode) {
+        BOOL enabled;
+        pNode->get_CurrentIsEnabled(&enabled);
+        if (!enabled) {
+            // set error
+            return false;
+        }
+        pNode->get_CurrentIsKeyboardFocusable(&enabled);
+        if (enabled) {
+            CComPtr<IUIAutomationValuePattern> pval;
+            pNode->GetCurrentPatternAs(UIA_ValuePatternId, __uuidof(IUIAutomationValuePattern), (void **)&pval);
+            pNode->SetFocus();
+            if (pval) {
+                _bstr_t val(data.c_str());
+                pval->SetValue(val.GetBSTR());
+                return true;
+            }
+        }
+    }
+    return false;
+}
 bool invoke(IUIAutomationElement* pNode) {
     if (pNode) {
         CComPtr<IUIAutomationInvokePattern> pInvoke;
@@ -92,13 +328,27 @@ bool select(IUIAutomationElement* pNode) {
     return false;
 }
 
-CComPtr<IUIAutomationElement> find(IUIAutomation* pAutomation, IUIAutomationElement * pSender, _variant_t target) {
+CComPtr<IUIAutomationElement> find(IUIAutomation* pAutomation, IUIAutomationElement * pSender, _variant_t target, const std::wstring& targetClass) {
     CComPtr<IUIAutomationCondition> pCondition;
     _variant_t element;
     pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
-    CComPtr<IUIAutomationElement> pFound;
-    HRESULT hr = pSender->FindFirst(TreeScope_Subtree, pCondition, &pFound);
-    return pFound;
+    CComPtr<IUIAutomationElementArray> all;
+    pSender->FindAll(TreeScope_Subtree, pCondition, &all);
+    if (all) {
+        int len;
+        all->get_Length(&len);
+        for (int i = 0; i < len; ++i) {
+            CComPtr<IUIAutomationElement> pFound;
+            all->GetElement(i, &pFound);
+            _bstr_t cls;
+            pFound->get_CurrentClassName(cls.GetAddress());
+            std::wstring test = (wchar_t*)cls;
+            if (targetClass == test || targetClass.length() == 0) {
+                return pFound;
+            }
+        }
+    }
+    return nullptr; // not found
 }
 
 class UICommand {
@@ -132,7 +382,7 @@ public:
     int _eventCount;
     DWORD pid;
     IUIAutomation* pAutomation;
-
+    
     // Constructor.
     EventHandler(IUIAutomation* au) : _refCount(1), _eventCount(0), pid(0UL), pAutomation(au)    {
     }
@@ -185,14 +435,24 @@ public:
                 name = (wchar_t*)senderName;
             }
         }
-
+        /*
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Trusted Add-in Catalogs"))); // button
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Catalog Url"), share, UICommand::Insert)); // edit field
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Add catalog"))); // button
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Show in Menu"), UICommand::EnableToggle));
+        parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // knock down any possible error screen 
+        parse(parm->automation, parent, UICommand(_bstr_t(L"Show in Menu"), UICommand::EnableToggle)); // make sure its set if there was a knock down
+        parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // OK - but only tthis OK --- pass in somehow
+        parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
+        parse(parm->automation, parent, UICommand(_bstr_t(L"OK"))); // 2end OK 
+        */
         switch (eventID)        {
         case UIA_MenuOpenedEventId:
             if (isMe(pSender)) {
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/AutomationElementExtensions.cs,1a83d951b02044f1,references
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/ScreenshotService.cs
                 if (name == L"File") {
-                    invoke(find(pAutomation, pSender, _variant_t(L"Options")));
+                    invoke(find(pAutomation, pSender, _variant_t(L"Options"), L"NetUIOutSpaceButton"));
                 }
             }
             break;
@@ -203,12 +463,18 @@ public:
             if (isMe(pSender)) {
                 if (name.find(L" - PowerPoint") != std::string::npos) {
                     // events ready, initiate
-                    invoke(find(pAutomation, pSender, _variant_t(L"No"))); // clear dlg (are there more)? bugbug
-                    invoke(find(pAutomation, pSender, _variant_t(L"File Tab")));
+                    invoke(find(pAutomation, pSender, _variant_t(L"No"), L"")); // clear dlg (are there more)? bugbug
+                    invoke(find(pAutomation, pSender, _variant_t(L"File Tab"), L"NetUIRibbonTab"));
                 }
                 else if (name == L"PowerPoint Options") {
-                    if (select(find(pAutomation, pSender, _variant_t(L"Trust Center")))) {
-                        invoke(find(pAutomation, pSender, _variant_t(L"Trust Center Settings...")));
+                    if (select(find(pAutomation, pSender, _variant_t(L"Trust Center"), L"NetUIListViewItem"))) {
+                    }
+                    if (invoke(find(pAutomation, pSender, _variant_t(L"Trust Center Settings..."), L"NetUIButton"))) {
+                    }
+                    if (invoke(find(pAutomation, pSender, _variant_t(L"Trusted Add-in Catalogs"), L"NetUIListViewItem"))) {
+                    }
+                    if (insert(find(pAutomation, pSender, _variant_t(L"Catalog Url"), L"NetUITextbox"), L"hi")) {
+
                     }
                 }
                 wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
@@ -228,6 +494,59 @@ public:
         return S_OK;
     }
 }; 
+
+int startPPT(EventHandler*pEvents, IUIAutomation* pAutomation) {
+    CLSID clsid;
+
+    // Get CLSID from ProgID using CLSIDFromProgID. 
+    LPCOLESTR progID = L"PowerPoint.Application";
+    HRESULT hr = CLSIDFromProgID(progID, &clsid);
+    if (FAILED(hr)) {
+        wprintf(L"CLSIDFromProgID(\"%s\") failed w/err 0x%08lx\n", progID, hr);
+        return 0;
+    }
+    // Start the server and get the IDispatch interface 
+    IDispatch *pPpApp = NULL;
+    hr = CoCreateInstance(        // [-or-] CoCreateInstanceEx, CoGetObject 
+        clsid,                    // CLSID of the server 
+        NULL,CLSCTX_LOCAL_SERVER,    // PowerPoint.Application is a local server 
+        IID_IDispatch,  (void **)&pPpApp);        // Output 
+    if (FAILED(hr)) {
+        wprintf(L"PowerPoint is not registered properly w/err 0x%08lx\n", hr);
+        return 0;
+    }
+    _variant_t app = pPpApp;//bugbug make sure this is deleted
+    _putws(L"PowerPoint.Application is started");
+    pEvents->pid = FindProcessId(L"POWERPNT.EXE");
+    SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
+
+    _variant_t result;
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"OperatingSystem", 0);
+    if (result.vt != VT_EMPTY) {
+        _putws(result.bstrVal);
+    }
+    else {
+        wprintf(L"OperatingSystem w/err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    // Get the build todo enforce versions here or at the file version level?
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Build", 0);
+    if (result.vt != VT_EMPTY) {
+        _putws(result.bstrVal);
+    }
+    else {
+        wprintf(L"Build w/err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    createSlide(app);
+
+
+    return 1;
+}
 
 
 std::wstring RegistryGetString(HKEY    key, PCWSTR  subKey, PCWSTR  valueName) {
@@ -360,6 +679,7 @@ void parse(IUIAutomation *automation, IUIAutomationElement* pRoot, const UIComma
     if (pRoot) {
         IUIAutomationCondition * pCondition;
         automation->CreateTrueCondition(&pCondition);
+        //IUIAutomationElementArray* all;
         pRoot->FindAll(TreeScope_Subtree, pCondition, &all);
         pCondition->Release();
         if (all) {
@@ -563,94 +883,6 @@ void findCheckBox(IUIAutomation *automation, IUIAutomationElement * pElement) {
 
 }
 
-
-// 
-//   FUNCTION: AutoWrap(int, VARIANT*, IDispatch*, LPOLESTR, int,...) 
-// 
-//   PURPOSE: Automation helper function. It simplifies most of the low-level  
-//      details involved with using IDispatch directly. Feel free to use it  
-//      in your own implementations. One caveat is that if you pass multiple  
-//      parameters, they need to be passed in reverse-order. 
-// 
-//   PARAMETERS: 
-//      * autoType - Could be one of these values: DISPATCH_PROPERTYGET,  
-//      DISPATCH_PROPERTYPUT, DISPATCH_PROPERTYPUTREF, DISPATCH_METHOD. 
-//      * pvResult - Holds the return value in a VARIANT. 
-//      * pDisp - The IDispatch interface. 
-//      * ptName - The property/method name exposed by the interface. 
-//      * cArgs - The count of the arguments. 
-// 
-//   RETURN VALUE: An HRESULT value indicating whether the function succeeds  
-//      or not.  
-// 
-//   EXAMPLE:  
-//      AutoWrap(DISPATCH_METHOD, NULL, pDisp, L"call", 2, parm[1], parm[0]); 
-// 
-HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptName, int cArgs...)
-{
-    // Begin variable-argument list 
-    va_list marker;
-    va_start(marker, cArgs);
-
-    if (!pDisp) {
-        _putws(L"NULL IDispatch passed to AutoWrap()");
-        return E_INVALIDARG;
-    }
-
-    // Variables used 
-    DISPPARAMS dp = { NULL, NULL, 0, 0 };
-    DISPID dispidNamed = DISPID_PROPERTYPUT;
-    DISPID dispID;
-    HRESULT hr;
-
-    // Get DISPID for name passed 
-    hr = pDisp->GetIDsOfNames(IID_NULL, &ptName, 1, LOCALE_USER_DEFAULT, &dispID);
-    if (FAILED(hr)) {
-        if (hr == RPC_E_SERVERCALL_RETRYLATER) {
-            wprintf(L"PowerPoint busy try again\n");
-        }
-        else {
-            wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n", ptName, hr);
-        }
-        return hr;
-    }
-
-    // Allocate memory for arguments 
-    VARIANT *pArgs = new VARIANT[cArgs + 1];
-    // Extract arguments... 
-    for (int i = 0; i < cArgs; i++) {
-        pArgs[i] = va_arg(marker, VARIANT);
-    }
-
-    // Build DISPPARAMS 
-    dp.cArgs = cArgs;
-    dp.rgvarg = pArgs;
-
-    // Handle special-case for property-puts 
-    if (autoType & DISPATCH_PROPERTYPUT) {
-        dp.cNamedArgs = 1;
-        dp.rgdispidNamedArgs = &dispidNamed;
-    }
-
-    // Make the call 
-    hr = pDisp->Invoke(dispID, IID_NULL, LOCALE_SYSTEM_DEFAULT, autoType, &dp, pvResult, NULL, NULL);
-    if (FAILED(hr)) {
-        if (hr == DISP_E_EXCEPTION) {
-            wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx DISP_E_EXCEPTION, really bad\n", ptName, dispID, hr);
-        }
-        else {
-            wprintf(L"IDispatch::Invoke(\"%s\"=%08lx) failed w/err 0x%08lx\n", ptName, dispID, hr);
-        }
-        return hr;
-    }
-
-    // End variable-argument section 
-    va_end(marker);
-
-    delete[] pArgs;
-
-    return hr;
-}
 void createShare(LPWSTR name) {
     // need to run as admin, c++ does not.  Batch file may? https://stackoverflow.com/questions/4419868/what-is-the-current-directory-in-a-batch-file
     //system("net share h=C:\\of_v0.10.0_vs2017_release\\apps\\myApps\\myContiq\\bin\\data");
@@ -976,201 +1208,12 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam) {
 
     return 0L;
 }
-void createSlide(IDispatch *app) {
-    if (!app){
-        return;
-    }
-    // Create a new Presentation. (i.e. Application.Presentations.Add) 
-    _variant_t pres;
-    _variant_t result;
-    HRESULT hr;
-    hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Presentations", 0);
-    if (result.vt != VT_EMPTY) {
-        pres = result.pdispVal;
-    }
-    else {
-        wprintf(L"Presentations w/err 0x%08lx\n", hr);
-        return;
-    }
-    // Call Presentations.Add to create a new presentation
-    _variant_t pre;
-    if (pres.vt != VT_EMPTY) {
-        result.Clear();
-        AutoWrap(DISPATCH_METHOD, result.GetAddress(), pres, (LPOLESTR)L"Add", 0);
-        if (result.vt != VT_EMPTY) {
-            pre = result.pdispVal;
-            _putws(L"A new presentation is created");
-        }
-    }
-    else {
-        wprintf(L"Add Presentations w/err 0x%08lx\n", hr);
-        return;
-    }
-
-    /////////////////////////////////////////////////////////////////////////
-    // Insert a new Slide and add some text to it. 
-    //  
-
-    _variant_t slides;
-    if (pre.vt != VT_EMPTY) {
-        result.Clear();
-        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), pre, (LPOLESTR)L"Slides", 0);
-        if (result.vt != VT_EMPTY) {
-            slides = result.pdispVal;
-        }
-    }
-    else {
-        wprintf(L"Slides w/err 0x%08lx\n", hr);
-        return;
-    }
-
-
-    _variant_t slide;
-    _variant_t vtIndex(1);
-    _variant_t vtLayout(2);
-    if (slides.vt != VT_EMPTY) {
-        _putws(L"Insert a slide");
-
-        result.Clear();
-        // If there are more than 1 parameters passed, they MUST be pass in  
-        // reversed order. Otherwise, you may get the error 0x80020009. 
-        AutoWrap(DISPATCH_METHOD, result.GetAddress(), slides, (LPOLESTR)L"Add", 2, vtLayout, vtIndex);
-        if (result.vt != VT_EMPTY) {
-            slide = result.pdispVal;
-        }
-    }
-    else {
-        wprintf(L"Add Slides w/err 0x%08lx\n", hr);
-        return;
-    }
-
-    // Add some texts to the slide 
-    _putws(L"Add some texts");
-
-    _variant_t shapes;
-    if (slide.vt != VT_EMPTY) {
-        result.Clear();
-        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), slide, (LPOLESTR)L"Shapes", 0);
-        if (result.vt != VT_EMPTY) {
-            shapes = result.pdispVal;
-        }
-    }
-    else {
-        wprintf(L"Shapes w/err 0x%08lx\n", hr);
-        return;
-    }
-
-    _variant_t shape;
-    if (shapes.vt != VT_EMPTY) {
-        vtIndex.Clear();
-        vtIndex = 1;
-        AutoWrap(DISPATCH_METHOD, result.GetAddress(), shapes, (LPOLESTR)L"Item", 1, vtIndex);
-        if (result.vt != VT_EMPTY) {
-            shape = result.pdispVal;
-        }
-    }
-    else {
-        wprintf(L"Item w/err 0x%08lx\n", hr);
-        return;
-    }
-
-    _variant_t frame;
-    if (shape.vt != VT_EMPTY) {
-        result.Clear();
-        HRESULT hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), shape, (LPOLESTR)L"TextFrame", 0);
-        if (result.vt != VT_EMPTY) {
-            frame = result.pdispVal;
-        }
-    }
-    else {
-        wprintf(L"TextFrame w/err 0x%08lx\n", hr);
-        return;
-    }
-
-    _variant_t range;
-    if (frame.vt != VT_EMPTY) {
-        result.Clear();
-        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), frame, (LPOLESTR)L"TextRange", 0);
-        if (result.vt != VT_EMPTY) {
-            range = result.pdispVal;
-        }
-    }
-    else {
-        wprintf(L"TextRange w/err 0x%08lx\n", hr);
-        return;
-    }
-
-    if (range.vt != VT_EMPTY) {
-        _variant_t welcome(L"Welcome To Contiq");
-        AutoWrap(DISPATCH_PROPERTYPUT, NULL, range, (LPOLESTR)L"Text", 1, welcome);
-    }
-}
-
-int startPPT(IUIAutomation* pAutomation) {
-    CLSID clsid;
-
-    // Option 1. Get CLSID from ProgID using CLSIDFromProgID. 
-    LPCOLESTR progID = L"PowerPoint.Application";
-    HRESULT hr = CLSIDFromProgID(progID, &clsid);
-    if (FAILED(hr)) {
-        wprintf(L"CLSIDFromProgID(\"%s\") failed w/err 0x%08lx\n", progID, hr);
-        return 0;
-    }
-    // Option 2. Build the CLSID directly. 
-    /*const IID CLSID_Application =
-    {0x91493441,0x5A91,0x11CF,{0x87,0x00,0x00,0xAA,0x00,0x60,0x26,0x3B}};
-    clsid = CLSID_Application;*/
-
-    // Start the server and get the IDispatch interface 
-    IDispatch *pPpApp = NULL;
-    hr = CoCreateInstance(        // [-or-] CoCreateInstanceEx, CoGetObject 
-        clsid,                    // CLSID of the server 
-        NULL,
-        CLSCTX_LOCAL_SERVER,    // PowerPoint.Application is a local server 
-        IID_IDispatch,            // Query the IDispatch interface 
-        (void **)&pPpApp);        // Output 
-
-    if (FAILED(hr)) {
-        wprintf(L"PowerPoint is not registered properly w/err 0x%08lx\n", hr);
-        return 0;
-    }
-
-    _variant_t app(pPpApp, FALSE);
-    _putws(L"PowerPoint.Application is started");
-    SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-    PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
-
-    _variant_t result;
-    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"OperatingSystem", 0);
-    if (result.vt != VT_EMPTY) {
-        _putws(result.bstrVal);
-    }
-    else {
-        wprintf(L"OperatingSystem w/err 0x%08lx\n", hr);
-        return 0;
-    }
-
-    // Get the build todo enforce versions here or at the file version level?
-    result.Clear();
-    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Build", 0);
-    if (result.vt != VT_EMPTY) {
-        _putws(result.bstrVal);
-    }
-    else {
-        wprintf(L"Build w/err 0x%08lx\n", hr);
-        return 0;
-    }
-
-    createSlide(app);
-
-    return 1;
-}
 
 DWORD WINAPI events(LPVOID lpParam){
     HRESULT hr;
     int ret = 0;
     CComPtr<IUIAutomationElement> pTargetElement;
-    EventHandler* pEHTemp = NULL;
+    EventHandler* pEvents = NULL;
     HANDLE*  handles = (HANDLE*)lpParam;
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
     CComPtr<IUIAutomation> pAutomation;
@@ -1186,20 +1229,19 @@ DWORD WINAPI events(LPVOID lpParam){
         return 0;
     }
 
-    pEHTemp = new EventHandler(pAutomation);
-    if (pEHTemp == NULL) {
+    pEvents = new EventHandler(pAutomation);
+    if (pEvents == NULL) {
         wprintf(L"EventHandler er\n");
         return 0;
     }
     wprintf(L"-Adding Event Handlers.\n");
-    hr = pAutomation->AddAutomationEventHandler(UIA_MenuOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-    hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-    hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
+    hr = pAutomation->AddAutomationEventHandler(UIA_MenuOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
+    hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
+    hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     
     // let others know we are ready then block for ever or someone frees the sem
     handles[1] = CreateEvent(NULL, TRUE, FALSE, NULL);
-    pEHTemp->pid = FindProcessId(L"POWERPNT.EXE");
-    startPPT(pAutomation);
+    startPPT(pEvents, pAutomation);
     SetEvent(handles[0]);
     DWORD dw = WaitForSingleObject(handles[1], INFINITE);
     //getchar(); // put in a  real block
@@ -1211,8 +1253,8 @@ DWORD WINAPI events(LPVOID lpParam){
         hr = pAutomation->RemoveAllEventHandlers();
     }
 
-    if (pEHTemp != NULL)
-        pEHTemp->Release();
+    if (pEvents != NULL)
+        pEvents->Release();
 
     CoUninitialize();
     return 0;
