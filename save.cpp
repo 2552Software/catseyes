@@ -1,4 +1,4 @@
- // install.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// install.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "pch.h"
@@ -6,6 +6,37 @@
 #pragma comment(lib, "Netapi32.lib")
 #pragma comment(lib, "Mincore.lib")
 #pragma comment(lib, "comsuppw.lib")
+
+DWORD FindProcessId(const std::wstring& processName) {
+
+    PROCESSENTRY32W processInfo;
+    processInfo.dwSize = sizeof(processInfo);
+
+    HANDLE processesSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+    if (processesSnapshot == INVALID_HANDLE_VALUE)
+        return 0;
+
+    Process32FirstW(processesSnapshot, &processInfo);
+    std::wstring next(processInfo.szExeFile);
+    _putws(processInfo.szExeFile);
+    if (next.find(processName) != std::string::npos) {
+        CloseHandle(processesSnapshot);
+        return processInfo.th32ProcessID;
+    }
+
+    while (Process32NextW(processesSnapshot, &processInfo)) {
+        _putws(processInfo.szExeFile);
+        std::wstring next(processInfo.szExeFile);
+        if (next.find(processName) != std::string::npos) {
+            CloseHandle(processesSnapshot);
+            return processInfo.th32ProcessID;
+        }
+    }
+
+    CloseHandle(processesSnapshot);
+    return 0;
+}
+
 void justEcho(const _bstr_t target, const std::wstring& name, _bstr_t& bs) {
     std::wstring s = (wchar_t*)target;
     wprintf_s(L"target %s, %s = %s\n", s.c_str(), name.c_str(), static_cast<wchar_t*>(bs));
@@ -39,12 +70,20 @@ void invoke(IUIAutomationElement* pNode) {
             pInvoke->Invoke();
         }
     }
+    else {
+        wprintf_s(L"invoke null\n");
+    }
 }
 void select(IUIAutomationElement* pNode) {
-    CComPtr<IUIAutomationSelectionItemPattern> pSelect;
-    pNode->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
-    if (pSelect) {
-        pSelect->Select();
+    if (pNode) {
+        CComPtr<IUIAutomationSelectionItemPattern> pSelect;
+        pNode->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
+        if (pSelect) {
+            pSelect->Select();
+        }
+    }
+    else {
+        wprintf_s(L"select null\n");
     }
 }
 
@@ -83,13 +122,14 @@ int askQuestion(const std::wstring& question) {
 class EventHandler : public IUIAutomationEventHandler {
 private:
     LONG _refCount;
+    std::wstring caption;
 public:
     int _eventCount;
-    DWORD targetPID;
+    DWORD pid;
     IUIAutomation* pAutomation;
 
     // Constructor.
-    EventHandler(DWORD pid, IUIAutomation* au) : _refCount(1), _eventCount(0), targetPID(pid), pAutomation(au)    {
+    EventHandler(IUIAutomation* au) : _refCount(1), _eventCount(0), pid(0UL), pAutomation(au)    {
     }
 
     // IUnknown methods.
@@ -125,9 +165,9 @@ public:
         return S_OK;
     }
     bool isMe(IUIAutomationElement * pSender) {
-        int  pid;
-        pSender->get_CurrentProcessId(&pid);
-        return pid == targetPID;
+        int  pidCurrent;
+        pSender->get_CurrentProcessId(&pidCurrent);
+        return pidCurrent == pid;
     }
     // IUIAutomationEventHandler methods
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement * pSender, EVENTID eventID)    {
@@ -135,29 +175,13 @@ public:
         std::wstring name;
         if (isMe(pSender)) {
             _bstr_t senderName;
-            size_t index = -1;
             pSender->get_CurrentName(senderName.GetAddress());
             if (senderName.length() > 0) {
                 name = (wchar_t*)senderName;
             }
         }
-        _bstr_t senderName2;
 
         switch (eventID)        {
-        case UIA_Text_TextSelectionChangedEventId:
-            wprintf(L">> Event UIA_Text_TextSelectionChangedEventId Received! (count: %d)\n", _eventCount);
-            break;
-        case UIA_StructureChangedEventId:
-            pSender->get_CurrentName(senderName2.GetAddress());
-            wprintf(L">> Event UIA_StructureChangedEventId Received! (count: %d) %s\n", _eventCount, (wchar_t*)senderName2);
-            break;
-        case UIA_AsyncContentLoadedEventId:
-            pSender->get_CurrentName(senderName2.GetAddress());
-            wprintf(L">> Event UIA_AsyncContentLoadedEventId Received! (count: %d) %s\n", _eventCount, (wchar_t*)senderName2);
-            if (isMe(pSender)) {
-                int i = 0;
-            }
-            break;
         case UIA_MenuOpenedEventId:
             if (isMe(pSender)) {
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/AutomationElementExtensions.cs,1a83d951b02044f1,references
@@ -170,16 +194,10 @@ public:
         case UIA_MenuModeStartEventId:
             wprintf(L">> Event UIA_MenuModeStartEventId Received! (count: %d)\n", _eventCount);
             break;
-        case UIA_ToolTipOpenedEventId:
-            wprintf(L">> Event ToolTipOpened Received! (count: %d)\n", _eventCount);
-            break;
-        case UIA_ToolTipClosedEventId:
-            wprintf(L">> Event ToolTipClosed Received! (count: %d)\n", _eventCount);
-            break;
         case UIA_Window_WindowOpenedEventId:
             if (isMe(pSender)) {
                 if (name == L"PowerPoint Options") {
-                    select(find(pAutomation, pSender, _variant_t(L"Options")));
+                    select(find(pAutomation, pSender, _variant_t(L"Trust Center")));
                 }
                 wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
             }
@@ -576,7 +594,12 @@ HRESULT AutoWrap(int autoType, VARIANT *pvResult, IDispatch *pDisp, LPOLESTR ptN
     // Get DISPID for name passed 
     hr = pDisp->GetIDsOfNames(IID_NULL, &ptName, 1, LOCALE_USER_DEFAULT, &dispID);
     if (FAILED(hr)) {
-        wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n", ptName, hr);
+        if (hr == RPC_E_SERVERCALL_RETRYLATER) {
+            wprintf(L"PowerPoint busy try again\n");
+        }
+        else {
+            wprintf(L"IDispatch::GetIDsOfNames(\"%s\") failed w/err 0x%08lx\n", ptName, hr);
+        }
         return hr;
     }
 
@@ -640,35 +663,6 @@ void createShare(LPWSTR name) {
     }
 }
 
-DWORD FindProcessId(const std::wstring& processName) {
-
-    PROCESSENTRY32W processInfo;
-    processInfo.dwSize = sizeof(processInfo);
-
-    HANDLE processesSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
-    if (processesSnapshot == INVALID_HANDLE_VALUE)
-        return 0;
-
-    Process32FirstW(processesSnapshot, &processInfo);
-    std::wstring next(processInfo.szExeFile);
-    _putws(processInfo.szExeFile);
-    if (next.find(processName) != std::string::npos) {
-        CloseHandle(processesSnapshot);
-        return processInfo.th32ProcessID;
-    }
-
-    while (Process32NextW(processesSnapshot, &processInfo)) {
-        _putws(processInfo.szExeFile);
-        std::wstring next(processInfo.szExeFile);
-        if (next.find(processName) != std::string::npos) {
-            CloseHandle(processesSnapshot);
-            return processInfo.th32ProcessID;
-        }
-    }
-
-    CloseHandle(processesSnapshot);
-    return 0;
-}
 
 struct Parm {
     //myEvents events;
@@ -971,14 +965,21 @@ DWORD WINAPI AutomatePowerPointByCOMAPI(LPVOID lpParam) {
     return 0L;
 }
 void createSlide(IDispatch *app) {
+    if (!app){
+        return;
+    }
     // Create a new Presentation. (i.e. Application.Presentations.Add) 
     _variant_t pres;
     _variant_t result;
-    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Presentations", 0);
+    HRESULT hr;
+    hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Presentations", 0);
     if (result.vt != VT_EMPTY) {
         pres = result.pdispVal;
     }
-
+    else {
+        wprintf(L"Presentations w/err 0x%08lx\n", hr);
+        return;
+    }
     // Call Presentations.Add to create a new presentation
     _variant_t pre;
     if (pres.vt != VT_EMPTY) {
@@ -989,12 +990,15 @@ void createSlide(IDispatch *app) {
             _putws(L"A new presentation is created");
         }
     }
+    else {
+        wprintf(L"Add Presentations w/err 0x%08lx\n", hr);
+        return;
+    }
 
     /////////////////////////////////////////////////////////////////////////
     // Insert a new Slide and add some text to it. 
     //  
 
-    // Get the Slides collection 
     _variant_t slides;
     if (pre.vt != VT_EMPTY) {
         result.Clear();
@@ -1002,6 +1006,10 @@ void createSlide(IDispatch *app) {
         if (result.vt != VT_EMPTY) {
             slides = result.pdispVal;
         }
+    }
+    else {
+        wprintf(L"Slides w/err 0x%08lx\n", hr);
+        return;
     }
 
 
@@ -1019,17 +1027,25 @@ void createSlide(IDispatch *app) {
             slide = result.pdispVal;
         }
     }
+    else {
+        wprintf(L"Add Slides w/err 0x%08lx\n", hr);
+        return;
+    }
 
     // Add some texts to the slide 
     _putws(L"Add some texts");
 
     _variant_t shapes;
-    if (slides.vt != VT_EMPTY) {
+    if (slide.vt != VT_EMPTY) {
         result.Clear();
         AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), slide, (LPOLESTR)L"Shapes", 0);
         if (result.vt != VT_EMPTY) {
             shapes = result.pdispVal;
         }
+    }
+    else {
+        wprintf(L"Shapes w/err 0x%08lx\n", hr);
+        return;
     }
 
     _variant_t shape;
@@ -1041,6 +1057,10 @@ void createSlide(IDispatch *app) {
             shape = result.pdispVal;
         }
     }
+    else {
+        wprintf(L"Item w/err 0x%08lx\n", hr);
+        return;
+    }
 
     _variant_t frame;
     if (shape.vt != VT_EMPTY) {
@@ -1049,6 +1069,10 @@ void createSlide(IDispatch *app) {
         if (result.vt != VT_EMPTY) {
             frame = result.pdispVal;
         }
+    }
+    else {
+        wprintf(L"TextFrame w/err 0x%08lx\n", hr);
+        return;
     }
 
     _variant_t range;
@@ -1059,186 +1083,162 @@ void createSlide(IDispatch *app) {
             range = result.pdispVal;
         }
     }
+    else {
+        wprintf(L"TextRange w/err 0x%08lx\n", hr);
+        return;
+    }
 
     if (range.vt != VT_EMPTY) {
         _variant_t welcome(L"Welcome To Contiq");
         AutoWrap(DISPATCH_PROPERTYPUT, NULL, range, (LPOLESTR)L"Text", 1, welcome);
     }
 }
+
+int startPPT(IUIAutomation* pAutomation) {
+    CLSID clsid;
+
+    // Option 1. Get CLSID from ProgID using CLSIDFromProgID. 
+    LPCOLESTR progID = L"PowerPoint.Application";
+    HRESULT hr = CLSIDFromProgID(progID, &clsid);
+    if (FAILED(hr)) {
+        wprintf(L"CLSIDFromProgID(\"%s\") failed w/err 0x%08lx\n", progID, hr);
+        return 0;
+    }
+    // Option 2. Build the CLSID directly. 
+    /*const IID CLSID_Application =
+    {0x91493441,0x5A91,0x11CF,{0x87,0x00,0x00,0xAA,0x00,0x60,0x26,0x3B}};
+    clsid = CLSID_Application;*/
+
+    // Start the server and get the IDispatch interface 
+    IDispatch *pPpApp = NULL;
+    hr = CoCreateInstance(        // [-or-] CoCreateInstanceEx, CoGetObject 
+        clsid,                    // CLSID of the server 
+        NULL,
+        CLSCTX_LOCAL_SERVER,    // PowerPoint.Application is a local server 
+        IID_IDispatch,            // Query the IDispatch interface 
+        (void **)&pPpApp);        // Output 
+
+    if (FAILED(hr)) {
+        wprintf(L"PowerPoint is not registered properly w/err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    _variant_t app(pPpApp, FALSE);
+    _putws(L"PowerPoint.Application is started");
+    SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
+
+    _variant_t result;
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"OperatingSystem", 0);
+    if (result.vt != VT_EMPTY) {
+        _putws(result.bstrVal);
+    }
+    else {
+        wprintf(L"OperatingSystem w/err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    // Get the build todo enforce versions here or at the file version level?
+    result.Clear();
+    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Build", 0);
+    if (result.vt != VT_EMPTY) {
+        _putws(result.bstrVal);
+    }
+    else {
+        wprintf(L"Build w/err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    createSlide(app);
+
+    IUIAutomationElement* pRoot = nullptr;
+    hr = pAutomation->GetRootElement(&pRoot);
+    // Get a top-level element by name, such as "Program Manager"
+    if (!pRoot) {
+        wprintf(L"GetRootElement err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    // events ready, initiate
+    invoke(find(pAutomation, pRoot, _variant_t(L"No"))); // clear dlg (are there more)? bugbug
+    invoke(find(pAutomation, pRoot, _variant_t(L"File Tab")));
+    return 1;
+}
+
+DWORD WINAPI events(LPVOID lpParam){
+    HRESULT hr;
+    int ret = 0;
+    CComPtr<IUIAutomationElement> pTargetElement;
+    EventHandler* pEHTemp = NULL;
+    HANDLE*  handles = (HANDLE*)lpParam;
+    CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    CComPtr<IUIAutomation> pAutomation;
+    hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&pAutomation);
+    if (FAILED(hr) || pAutomation == NULL)    {
+        wprintf(L"CoCreateInstance failed w/err 0x%08lx\n", hr);
+        return 0;
+    }
+    // Use root element for listening to window and tooltip creation and destruction.
+    hr = pAutomation->GetRootElement(&pTargetElement);
+    if (FAILED(hr) || pTargetElement == NULL)    {
+        wprintf(L"GetRootElement failed w/err 0x%08lx\n", hr);
+        return 0;
+    }
+
+    pEHTemp = new EventHandler(pAutomation);
+    if (pEHTemp == NULL) {
+        wprintf(L"EventHandler er\n");
+        return 0;
+    }
+    wprintf(L"-Adding Event Handlers.\n");
+    hr = pAutomation->AddAutomationEventHandler(UIA_MenuOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
+    hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
+    hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
+    
+    // let others know we are ready then block for ever or someone frees the sem
+    handles[1] = CreateEvent(NULL, TRUE, FALSE, NULL);
+    pEHTemp->pid = FindProcessId(L"POWERPNT.EXE");
+    startPPT(pAutomation);
+    SetEvent(handles[0]);
+    DWORD dw = WaitForSingleObject(handles[1], INFINITE);
+    //getchar(); // put in a  real block
+
+    wprintf(L"-Removing Event Handlers.\n");
+
+cleanup: //bugbug go to try/finannly
+    // Remove event handlers, release resources, and terminate
+    if (pAutomation != NULL)  {
+        hr = pAutomation->RemoveAllEventHandlers();
+        if (FAILED(hr))
+            return 0;
+    }
+
+    if (pEHTemp != NULL)
+        pEHTemp->Release();
+
+    CoUninitialize();
+    return 0;
+}
+
 int wmain() {
     std::wcout << L"Hello World!\n"; 
-        HRESULT hr;
-        int ret = 0;
-        IUIAutomationElement* pTargetElement = NULL;
-        EventHandler* pEHTemp = NULL;
+    HANDLE  hThreadArray[2];
+    DWORD id;
+    HANDLE handles[2];
+    handles[0] = CreateEvent(NULL, TRUE, FALSE, NULL);      // Set  
+    handles[1] = nullptr;
+    hThreadArray[0] = CreateThread(NULL, 0, events, (LPVOID)&handles, 0, &id);
+    DWORD dw  = WaitForSingleObject(handles[0], INFINITE);
+    CloseHandle(handles[0]);
 
-        CoInitializeEx(NULL, COINIT_MULTITHREADED);
-        IUIAutomation* pAutomation = NULL;
-        hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&pAutomation);
-        if (FAILED(hr) || pAutomation == NULL)
-        {
-            ret = 1;
-        }
-        // Use root element for listening to window and tooltip creation and destruction.
-        hr = pAutomation->GetRootElement(&pTargetElement);
-        if (FAILED(hr) || pTargetElement == NULL)
-        {
-            ret = 1;
-        }
+    // end threads gracefully
+    //if (handles[1]) {
+      //  SetEvent(handles[1]);
+   // }
+    // threads exit upon error or when program is completed
+    WaitForMultipleObjects(1, hThreadArray, TRUE, INFINITE);
 
-        CLSID clsid;
-
-        // Option 1. Get CLSID from ProgID using CLSIDFromProgID. 
-        LPCOLESTR progID = L"PowerPoint.Application";
-        hr = CLSIDFromProgID(progID, &clsid);
-        if (FAILED(hr)) {
-            wprintf(L"CLSIDFromProgID(\"%s\") failed w/err 0x%08lx\n", progID, hr);
-            return 1;
-        }
-        // Option 2. Build the CLSID directly. 
-        /*const IID CLSID_Application =
-        {0x91493441,0x5A91,0x11CF,{0x87,0x00,0x00,0xAA,0x00,0x60,0x26,0x3B}};
-        clsid = CLSID_Application;*/
-
-        // Start the server and get the IDispatch interface 
-        IDispatch *pPpApp = NULL;
-        hr = CoCreateInstance(        // [-or-] CoCreateInstanceEx, CoGetObject 
-            clsid,                    // CLSID of the server 
-            NULL,
-            CLSCTX_LOCAL_SERVER,    // PowerPoint.Application is a local server 
-            IID_IDispatch,            // Query the IDispatch interface 
-            (void **)&pPpApp);        // Output 
-
-        if (FAILED(hr)) {
-            wprintf(L"PowerPoint is not registered properly w/err 0x%08lx\n", hr);
-            return 1;
-        }
-        _variant_t app(pPpApp, FALSE);
-        _putws(L"PowerPoint.Application is started");
-        SystemParametersInfo(SPI_SETSCREENREADER, TRUE, NULL, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-        PostMessage(HWND_BROADCAST, WM_WININICHANGE, SPI_SETSCREENREADER, 0);
-
-        DWORD pid = FindProcessId(L"POWERPNT.EXE");
-
-        _variant_t result;
-        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"OperatingSystem", 0);
-        if (result.vt != VT_EMPTY) {
-            _putws(result.bstrVal);
-        }
-        // Get the build todo enforce versions here or at the file version level?
-        result.Clear();
-        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Build", 0);
-        if (result.vt != VT_EMPTY) {
-            _putws(result.bstrVal);
-        }
-        
-        createSlide(app);
-
-        std::wstring cap;
-        _bstr_t caption;
-        result.Clear();
-        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), app, (LPOLESTR)L"Caption", 0);
-        if (result.vt != VT_EMPTY) {
-            caption = result.bstrVal;
-            cap = (wchar_t*)caption;
-            cap += L" - PowerPoint";
-            _putws(result.bstrVal);
-        }
-
-        IUIAutomationElement* pRoot = nullptr;
-        IUIAutomationElement* pFound = nullptr;
-        hr = pAutomation->GetRootElement(&pRoot);
-        // Get a top-level element by name, such as "Program Manager"
-        if (!pRoot) {
-            /*
-            IUIAutomationElement* element;
-            IUIAutomationCondition* pCondition;
-            VARIANT varProp;
-            VariantInit(&varProp);
-            varProp.vt = VT_BSTR;
-            varProp.bstrVal = SysAllocString(cap.c_str());
-            pAutomation->CreatePropertyCondition(UIA_NamePropertyId, varProp, &pCondition);
-            pRoot->FindFirst(TreeScope_Children, pCondition, &pFound);
-            pRoot->Release();
-            pCondition->Release();
-            */
-            return 0;
-        }
-       //parse(parent, UICommand(_bstr_t(L"No"))); // first dlg box
-        //parse(parent, UICommand(_bstr_t(L"File Tab"))); // File
-
-        pEHTemp = new EventHandler(pid, pAutomation);
-        if (pEHTemp == NULL)   {
-        }
-        wprintf(L"-Adding Event Handlers.\n");
-        hr = pAutomation->AddAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr)) {
-            ret = 1;
-        }
-        hr = pAutomation->AddAutomationEventHandler(UIA_MenuOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr)) {
-            ret = 1;
-        }
-        hr = pAutomation->AddAutomationEventHandler(UIA_MenuModeStartEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr)) {
-            ret = 1;
-        }
-        hr = pAutomation->AddAutomationEventHandler(UIA_ToolTipOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr))        {
-            ret = 1;
-        }
-        hr = pAutomation->AddAutomationEventHandler(UIA_ToolTipClosedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr))
-        {
-            ret = 1;
-            goto cleanup;
-        }
-        hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr))
-        {
-            ret = 1;
-            goto cleanup;
-        }
-        
-        hr = pAutomation->AddAutomationEventHandler(UIA_AsyncContentLoadedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr))
-        {
-            ret = 1;
-            goto cleanup;
-        }
-        
-        hr = pAutomation->AddAutomationEventHandler(UIA_StructureChangedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pTargetElement, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEHTemp);
-        if (FAILED(hr))
-        {
-            ret = 1;
-            goto cleanup;
-        }
-
-        wprintf(L"-Press any key to remove event handlers and exit\n");
-        getchar();
-
-        wprintf(L"-Removing Event Handlers.\n");
-
-    cleanup:
-        // Remove event handlers, release resources, and terminate
-        if (pAutomation != NULL)
-        {
-            hr = pAutomation->RemoveAllEventHandlers();
-            if (FAILED(hr))
-                ret = 1;
-            pAutomation->Release();
-        }
-
-        if (pEHTemp != NULL)
-            pEHTemp->Release();
-
-        if (pTargetElement != NULL)
-            pTargetElement->Release();
-
-        CoUninitialize();
-
-        LPWSTR *szArglist;
+    LPWSTR *szArglist;
     int nArgs;
 
     szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
