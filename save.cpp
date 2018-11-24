@@ -1,4 +1,5 @@
-// install.cpp : This file contains the 'main' function. Program execution begins and ends there.
+
+ // install.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "pch.h"
@@ -62,29 +63,33 @@ void echoElement(IUIAutomationElement* element, const _bstr_t target, BOOL& b, _
 
 }
 
-void invoke(IUIAutomationElement* pNode) {
+bool invoke(IUIAutomationElement* pNode) {
     if (pNode) {
         CComPtr<IUIAutomationInvokePattern> pInvoke;
         pNode->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
         if (pInvoke) {
             pInvoke->Invoke();
+            return true;
         }
     }
     else {
         wprintf_s(L"invoke null\n");
     }
+    return false;
 }
-void select(IUIAutomationElement* pNode) {
+bool select(IUIAutomationElement* pNode) {
     if (pNode) {
         CComPtr<IUIAutomationSelectionItemPattern> pSelect;
         pNode->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
         if (pSelect) {
             pSelect->Select();
+            return true;
         }
     }
     else {
         wprintf_s(L"select null\n");
     }
+    return false;
 }
 
 CComPtr<IUIAutomationElement> find(IUIAutomation* pAutomation, IUIAutomationElement * pSender, _variant_t target) {
@@ -196,8 +201,15 @@ public:
             break;
         case UIA_Window_WindowOpenedEventId:
             if (isMe(pSender)) {
-                if (name == L"PowerPoint Options") {
-                    select(find(pAutomation, pSender, _variant_t(L"Trust Center")));
+                if (name.find(L" - PowerPoint") != std::string::npos) {
+                    // events ready, initiate
+                    invoke(find(pAutomation, pSender, _variant_t(L"No"))); // clear dlg (are there more)? bugbug
+                    invoke(find(pAutomation, pSender, _variant_t(L"File Tab")));
+                }
+                else if (name == L"PowerPoint Options") {
+                    if (select(find(pAutomation, pSender, _variant_t(L"Trust Center")))) {
+                        invoke(find(pAutomation, pSender, _variant_t(L"Trust Center Settings...")));
+                    }
                 }
                 wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
             }
@@ -1151,17 +1163,6 @@ int startPPT(IUIAutomation* pAutomation) {
 
     createSlide(app);
 
-    IUIAutomationElement* pRoot = nullptr;
-    hr = pAutomation->GetRootElement(&pRoot);
-    // Get a top-level element by name, such as "Program Manager"
-    if (!pRoot) {
-        wprintf(L"GetRootElement err 0x%08lx\n", hr);
-        return 0;
-    }
-
-    // events ready, initiate
-    invoke(find(pAutomation, pRoot, _variant_t(L"No"))); // clear dlg (are there more)? bugbug
-    invoke(find(pAutomation, pRoot, _variant_t(L"File Tab")));
     return 1;
 }
 
@@ -1205,12 +1206,9 @@ DWORD WINAPI events(LPVOID lpParam){
 
     wprintf(L"-Removing Event Handlers.\n");
 
-cleanup: //bugbug go to try/finannly
     // Remove event handlers, release resources, and terminate
     if (pAutomation != NULL)  {
         hr = pAutomation->RemoveAllEventHandlers();
-        if (FAILED(hr))
-            return 0;
     }
 
     if (pEHTemp != NULL)
