@@ -138,12 +138,14 @@ public:
                     _variant_t target(L"Options");
                     _variant_t element;
                     pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);// CreateTrueCondition(&pCondition);
-                    IUIAutomationElement* pFound;
+                    IUIAutomationElement* pFound=nullptr;
                     HRESULT hr = pRoot->FindFirst(TreeScope_Subtree, pCondition, &pFound);
-                    IUIAutomationInvokePattern * pInvoke;
-                    hr = pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
-                    if (pInvoke) {
-                        int i = 0;
+                    if (pFound) {
+                        IUIAutomationInvokePattern * pInvoke;
+                        hr = pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+                        if (pInvoke) {
+                            pInvoke->Invoke();
+                        }
                     }
                     pCondition->Release();
                 }
@@ -1082,6 +1084,7 @@ int wmain() {
         }
         _variant_t app(pPpApp, FALSE);
         _putws(L"PowerPoint.Application is started");
+
         DWORD pid = FindProcessId(L"POWERPNT.EXE");
 
         _variant_t result;
