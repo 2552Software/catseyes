@@ -1,4 +1,4 @@
-// install.cpp : This file contains the 'main' function. Program execution begins and ends there.
+ // install.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "pch.h"
@@ -6,16 +6,6 @@
 #pragma comment(lib, "Netapi32.lib")
 #pragma comment(lib, "Mincore.lib")
 #pragma comment(lib, "comsuppw.lib")
-void invoke(IUIAutomationElement* pNode) {
-    if (pNode) {
-        IUIAutomationInvokePattern * pInvoke;
-        pNode->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
-        if (pInvoke) {
-            pInvoke->Invoke();
-        }
-    }
-
-}
 void justEcho(const _bstr_t target, const std::wstring& name, _bstr_t& bs) {
     std::wstring s = (wchar_t*)target;
     wprintf_s(L"target %s, %s = %s\n", s.c_str(), name.c_str(), static_cast<wchar_t*>(bs));
@@ -39,6 +29,32 @@ void echoElement(IUIAutomationElement* element, const _bstr_t target, BOOL& b, _
         justEcho(target, L"id", id);
     }
 
+}
+
+void invoke(IUIAutomationElement* pNode) {
+    if (pNode) {
+        CComPtr<IUIAutomationInvokePattern> pInvoke;
+        pNode->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
+        if (pInvoke) {
+            pInvoke->Invoke();
+        }
+    }
+}
+void select(IUIAutomationElement* pNode) {
+    CComPtr<IUIAutomationSelectionItemPattern> pSelect;
+    pNode->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&pSelect);
+    if (pSelect) {
+        pSelect->Select();
+    }
+}
+
+CComPtr<IUIAutomationElement> find(IUIAutomation* pAutomation, IUIAutomationElement * pSender, _variant_t target) {
+    CComPtr<IUIAutomationCondition> pCondition;
+    _variant_t element;
+    pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
+    CComPtr<IUIAutomationElement> pFound;
+    HRESULT hr = pSender->FindFirst(TreeScope_Subtree, pCondition, &pFound);
+    return pFound;
 }
 
 class UICommand {
@@ -108,40 +124,6 @@ public:
         this->AddRef();
         return S_OK;
     }
-    void select(_variant_t target, IUIAutomationElement * pSender) {
-        IUIAutomationCondition * pCondition;
-        _variant_t element;
-        pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
-        IUIAutomationElement* pFound = nullptr;
-        HRESULT hr = pSender->FindFirst(TreeScope_Descendants, pCondition, &pFound);
-        if (pFound) {
-            IUIAutomationSelectionItemPattern*sel = nullptr;
-            pFound->GetCurrentPatternAs(UIA_SelectionItemPatternId, __uuidof(IUIAutomationSelectionItemPattern), (void **)&sel);
-            if (sel) {
-                sel->Select();
-                sel->Release();
-            }
-            pFound->Release();
-        }
-        pCondition->Release();
-    }
-    void invoke(_variant_t target, IUIAutomationElement * pSender) {
-        IUIAutomationCondition * pCondition;
-        _variant_t element;
-        pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
-        IUIAutomationElement* pFound = nullptr;
-        HRESULT hr = pSender->FindFirst(TreeScope_Subtree, pCondition, &pFound);
-        if (pFound) {
-            IUIAutomationInvokePattern * pInvoke = nullptr;
-            hr = pFound->GetCurrentPatternAs(UIA_InvokePatternId, __uuidof(IUIAutomationInvokePattern), (void **)&pInvoke);
-            if (pInvoke) {
-                pInvoke->Invoke();
-                pInvoke->Release();
-            }
-            pFound->Release();
-        }
-        pCondition->Release();
-    }
     bool isMe(IUIAutomationElement * pSender) {
         int  pid;
         pSender->get_CurrentProcessId(&pid);
@@ -181,7 +163,7 @@ public:
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/AutomationElementExtensions.cs,1a83d951b02044f1,references
                 //http://source.roslyn.io/#Microsoft.VisualStudio.IntegrationTest.Utilities/ScreenshotService.cs
                 if (name == L"File") {
-                    invoke(_variant_t(L"Options"), pSender);
+                    invoke(find(pAutomation, pSender, _variant_t(L"Options")));
                 }
             }
             break;
@@ -197,7 +179,7 @@ public:
         case UIA_Window_WindowOpenedEventId:
             if (isMe(pSender)) {
                 if (name == L"PowerPoint Options") {
-                    select(_variant_t(L"Trust Center"), pSender);
+                    select(find(pAutomation, pSender, _variant_t(L"Options")));
                 }
                 wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
             }
@@ -997,23 +979,15 @@ void createSlide(IDispatch *app) {
         pres = result.pdispVal;
     }
 
-
-    // Call Presentations.Add to create a new presentation
-    _variant_t addins;
-    result.Clear();
-    AutoWrap(DISPATCH_METHOD, result.GetAddress(), app, (LPOLESTR)L"AddIns", 0);
-    if (result.vt != VT_EMPTY) {
-        addins = result.pdispVal;
-        _putws(L"A new presentation is created");
-    }
-
     // Call Presentations.Add to create a new presentation
     _variant_t pre;
-    result.Clear();
-    AutoWrap(DISPATCH_METHOD, result.GetAddress(), pres, (LPOLESTR)L"Add", 0);
-    if (result.vt != VT_EMPTY) {
-        pre = result.pdispVal;
-        _putws(L"A new presentation is created");
+    if (pres.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_METHOD, result.GetAddress(), pres, (LPOLESTR)L"Add", 0);
+        if (result.vt != VT_EMPTY) {
+            pre = result.pdispVal;
+            _putws(L"A new presentation is created");
+        }
     }
 
     /////////////////////////////////////////////////////////////////////////
@@ -1022,60 +996,74 @@ void createSlide(IDispatch *app) {
 
     // Get the Slides collection 
     _variant_t slides;
-    result.Clear();
-    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), pre, (LPOLESTR)L"Slides", 0);
-    if (result.vt != VT_EMPTY) {
-        slides = result.pdispVal;
+    if (pre.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), pre, (LPOLESTR)L"Slides", 0);
+        if (result.vt != VT_EMPTY) {
+            slides = result.pdispVal;
+        }
     }
 
-    // Insert a new slide 
-    _putws(L"Insert a slide");
 
     _variant_t slide;
     _variant_t vtIndex(1);
     _variant_t vtLayout(2);
-    result.Clear();
-    // If there are more than 1 parameters passed, they MUST be pass in  
-    // reversed order. Otherwise, you may get the error 0x80020009. 
-    AutoWrap(DISPATCH_METHOD, result.GetAddress(), slides, (LPOLESTR)L"Add", 2, vtLayout, vtIndex);
-    if (result.vt != VT_EMPTY) {
-        slide = result.pdispVal;
+    if (slides.vt != VT_EMPTY) {
+        _putws(L"Insert a slide");
+
+        result.Clear();
+        // If there are more than 1 parameters passed, they MUST be pass in  
+        // reversed order. Otherwise, you may get the error 0x80020009. 
+        AutoWrap(DISPATCH_METHOD, result.GetAddress(), slides, (LPOLESTR)L"Add", 2, vtLayout, vtIndex);
+        if (result.vt != VT_EMPTY) {
+            slide = result.pdispVal;
+        }
     }
 
     // Add some texts to the slide 
     _putws(L"Add some texts");
 
     _variant_t shapes;
-    result.Clear();
-    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), slide, (LPOLESTR)L"Shapes", 0);
-    if (result.vt != VT_EMPTY) {
-        shapes = result.pdispVal;
+    if (slides.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), slide, (LPOLESTR)L"Shapes", 0);
+        if (result.vt != VT_EMPTY) {
+            shapes = result.pdispVal;
+        }
     }
 
     _variant_t shape;
-    vtIndex.Clear();
-    vtIndex = 1;
-    AutoWrap(DISPATCH_METHOD, result.GetAddress(), shapes, (LPOLESTR)L"Item", 1, vtIndex);
-    if (result.vt != VT_EMPTY) {
-        shape = result.pdispVal;
+    if (shapes.vt != VT_EMPTY) {
+        vtIndex.Clear();
+        vtIndex = 1;
+        AutoWrap(DISPATCH_METHOD, result.GetAddress(), shapes, (LPOLESTR)L"Item", 1, vtIndex);
+        if (result.vt != VT_EMPTY) {
+            shape = result.pdispVal;
+        }
     }
 
     _variant_t frame;
-    result.Clear();
-    HRESULT hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), shape, (LPOLESTR)L"TextFrame", 0);
-    if (result.vt != VT_EMPTY) {
-        frame = result.pdispVal;
+    if (shape.vt != VT_EMPTY) {
+        result.Clear();
+        HRESULT hr = AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), shape, (LPOLESTR)L"TextFrame", 0);
+        if (result.vt != VT_EMPTY) {
+            frame = result.pdispVal;
+        }
     }
 
     _variant_t range;
-    result.Clear();
-    AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), frame, (LPOLESTR)L"TextRange", 0);
-    if (result.vt != VT_EMPTY) {
-        range = result.pdispVal;
+    if (frame.vt != VT_EMPTY) {
+        result.Clear();
+        AutoWrap(DISPATCH_PROPERTYGET, result.GetAddress(), frame, (LPOLESTR)L"TextRange", 0);
+        if (result.vt != VT_EMPTY) {
+            range = result.pdispVal;
+        }
     }
 
-    _variant_t welcome(L"Welcome To Contiq");
-    AutoWrap(DISPATCH_PROPERTYPUT, NULL, range, (LPOLESTR)L"Text", 1, welcome);
+    if (range.vt != VT_EMPTY) {
+        _variant_t welcome(L"Welcome To Contiq");
+        AutoWrap(DISPATCH_PROPERTYPUT, NULL, range, (LPOLESTR)L"Text", 1, welcome);
+    }
 }
 int wmain() {
     std::wcout << L"Hello World!\n"; 
