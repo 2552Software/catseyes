@@ -455,20 +455,16 @@ public:
                 if (name.find(L"Office Add-ins") != std::string::npos) {
                     CheckName = L"Office Add-ins";
                     invoke(find(pAutomation, pSender, _variant_t(L"SHARED FOLDER"), L""));
-                    tryall(pAutomation, pSender, _variant_t(L"Contiq Companion Beta"));
-                    tryall(pAutomation, pSender, _variant_t(L"Contiq"));
-                    select(find(pAutomation, pSender, _variant_t(L"Contiq Companion Beta"), L""));
                     while (1) {
-                        Sleep(500UL);
-                        if (CheckName.length() > 0) {
-                            CComPtr<IUIAutomationElement> found = find(pAutomation, pSender, _variant_t(CheckName.c_str()), L"");
-                            if (!found) {
-                                CheckName.clear();
-                                select(find(pAutomation, pRoot, _variant_t(L"Ribbon Tabs"), L""));
-                                select(find(pAutomation, pRoot, _variant_t(L"Home"), L""));
-                                select(find(pAutomation, pRoot, _variant_t(L"Contiq"), L""));
-                                break;
-                            }
+                        Sleep(100UL);
+                        UIA_HWND h;
+                        pSender->get_CurrentNativeWindowHandle(&h);
+                        if (!h) {
+                            CComPtr<IUIAutomationElement> f = find(pAutomation, pRoot, _variant_t(L"Home"), L"NetUIRibbonTab");
+                            select(f);
+                            f = find(pAutomation, pRoot, _variant_t(L"Contiq"), L"");
+                            invoke(f);
+                            break;
                         }
                     }
 
@@ -519,14 +515,6 @@ public:
                                 if (found) {
                                     invoke(find(pAutomation, found, _variant_t(L"Close"), L""));
                                 }
-                                //AutoWrap(DISPATCH_METHOD, NULL, app, (LPOLESTR)L"Quit", 0);
-                                wprintf(L"-Removing Event Handlers.\n");
-                                // Remove event handlers etc
-                                if (pAutomation) {
-                                    pAutomation->RemoveAllEventHandlers();
-                                }
-                                app->Release();
-                                SetEvent(event); // stop thread
                             }
                         }
                     }
@@ -550,6 +538,14 @@ public:
         case UIA_Window_WindowClosedEventId:
             if (isMe(pSender)) {
                 wprintf(L"ME!>> Event WindowClosed Received! (count: %d)\n", _eventCount);
+                //AutoWrap(DISPATCH_METHOD, NULL, app, (LPOLESTR)L"Quit", 0);
+                wprintf(L"-Removing Event Handlers.\n");
+                // Remove event handlers etc
+                if (pAutomation) {
+                    pAutomation->RemoveAllEventHandlers();
+                }
+                app->Release();
+                SetEvent(event); // stop thread
             }
             wprintf(L">> Event WindowClosed Received! (count: %d)\n", _eventCount);
             break;
