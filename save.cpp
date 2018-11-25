@@ -1,4 +1,4 @@
-  // install.cpp : This file contains the 'main' function. Program execution begins and ends there.
+// install.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
 #include "pch.h"
@@ -346,6 +346,7 @@ class EventHandler : public IUIAutomationEventHandler {
 private:
     LONG _refCount;
     std::wstring caption;
+    std::wstring CheckName;
 public:
     int _eventCount;
     DWORD pid;
@@ -378,7 +379,6 @@ public:
         }
         return ret;
     }
-
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppInterface)
     {
         if (riid == __uuidof(IUnknown))
@@ -445,17 +445,33 @@ public:
         case UIA_MenuModeStartEventId:
             wprintf(L">> Event UIA_MenuModeStartEventId Received! (count: %d)\n", _eventCount);
             break;
+        case UIA_ToolTipOpenedEventId:
+            if (isMe(pSender)) {
+                int i = 0;
+            }
+            break;
         case UIA_Window_WindowOpenedEventId:
             if (isMe(pSender)) {
-                SAFEARRAY *rid;
-                if (SUCCEEDED(pSender->GetRuntimeId(&rid))) {
-                    wprintf(L">> GetRuntimeId\n");
-                }
                 if (name.find(L"Office Add-ins") != std::string::npos) {
+                    CheckName = L"Office Add-ins";
                     invoke(find(pAutomation, pSender, _variant_t(L"SHARED FOLDER"), L""));
                     tryall(pAutomation, pSender, _variant_t(L"Contiq Companion Beta"));
                     tryall(pAutomation, pSender, _variant_t(L"Contiq"));
                     select(find(pAutomation, pSender, _variant_t(L"Contiq Companion Beta"), L""));
+                    while (1) {
+                        Sleep(500UL);
+                        if (CheckName.length() > 0) {
+                            CComPtr<IUIAutomationElement> found = find(pAutomation, pSender, _variant_t(CheckName.c_str()), L"");
+                            if (!found) {
+                                CheckName.clear();
+                                select(find(pAutomation, pRoot, _variant_t(L"Ribbon Tabs"), L""));
+                                select(find(pAutomation, pRoot, _variant_t(L"Home"), L""));
+                                select(find(pAutomation, pRoot, _variant_t(L"Contiq"), L""));
+                                break;
+                            }
+                        }
+                    }
+
                 }
                 if (name.find(L" - PowerPoint") != std::string::npos) {
                     invoke(find(pAutomation, pSender, _variant_t(L"No"), L"Button")); // clear dlg (are there more)? bugbug
@@ -475,6 +491,9 @@ public:
                 else if (name == L"Manage Add-in Catalogs" && type == 0) {
                     invoke(find(pAutomation, pSender, _variant_t(L"OK"), L""));
                 }
+                else if (name == L"Get Started With Contiq!" && type == 1) {
+                    invoke(find(pAutomation, pSender, _variant_t(L"OK"), L""));
+                }
                 else if (name == L"Trust Center" && type == 0) {
                     if (invoke(find(pAutomation, pSender, _variant_t(L"Trusted Add-in Catalogs"), L"NetUIListViewItem"))) {
                         Sleep(500UL);
@@ -491,7 +510,6 @@ public:
                             invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton"));
                             Sleep(500UL);
                             invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton"));
-                            /*
                             if (presentation.vt != VT_EMPTY) {
                                 AutoWrap(DISPATCH_METHOD, NULL, presentation, (LPOLESTR)L"Close", 0);
                             }
@@ -510,7 +528,6 @@ public:
                                 app->Release();
                                 SetEvent(event); // stop thread
                             }
-                            */
                         }
                     }
                 }
@@ -531,24 +548,8 @@ public:
         case UIA_SystemAlertEventId:
             break;
         case UIA_Window_WindowClosedEventId:
-            SAFEARRAY *rid;
-            if (SUCCEEDED(pSender->GetRuntimeId(&rid))) {
-                wprintf(L">> GetRuntimeId\n");
-            }
-
             if (isMe(pSender)) {
-
                 wprintf(L"ME!>> Event WindowClosed Received! (count: %d)\n", _eventCount);
-            }
-            {
-                _bstr_t name;
-                HRESULT hr = pSender->get_CurrentName(name.GetAddress());
-                if (hr == UIA_E_ELEMENTNOTAVAILABLE) {
-                    wprintf(L">> UIA_E_ELEMENTNOTAVAILABLE\n");
-                }
-                else {
-                    wprintf(L">> Event WindowClosed %s\n", (wchar_t*)name);
-                }
             }
             wprintf(L">> Event WindowClosed Received! (count: %d)\n", _eventCount);
             break;
@@ -1426,7 +1427,10 @@ DWORD WINAPI events(LPVOID lpParam){
     hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     hr = pAutomation->AddAutomationEventHandler(UIA_NotificationEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     hr = pAutomation->AddAutomationEventHandler(UIA_SystemAlertEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
-    
+    hr = pAutomation->AddAutomationEventHandler(UIA_SystemAlertEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
+    hr = pAutomation->AddAutomationEventHandler(UIA_ToolTipOpenedEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
+
+    //HandleStructureChangedEvent
     // let others know we are ready then block for ever or someone frees the sem
     startPPT(pEvents, pAutomation);
     SetEvent(pdata->handles[0]);
