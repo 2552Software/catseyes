@@ -252,6 +252,36 @@ bool findDescendantByClass(IUIAutomation* pAutomation, IUIAutomationElement * pS
     }
     return false;
 }
+// learning tool
+void tryall(IUIAutomation* pAutomation, IUIAutomationElement * pSender, _variant_t target) {
+    CComPtr<IUIAutomationCondition> pCondition;
+    pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
+    CComPtr<IUIAutomationElementArray> all;
+    pSender->FindAll(TreeScope_Subtree, pCondition, &all);
+    CComPtr<IUIAutomationElement> ret;
+    if (all) {
+        int len;
+        all->get_Length(&len);
+        for (int i = 0; i < len; ++i) {
+            CComPtr<IUIAutomationElement> pFound;
+            all->GetElement(i, &pFound);
+            _bstr_t cls;
+            HRESULT hr = pFound->get_CurrentClassName(cls.GetAddress());
+            if (!IS_ERROR(hr)) {
+                pFound->SetFocus();
+                select(pFound);
+                invoke(pFound);
+            }
+            _bstr_t n;
+            hr = pFound->get_CurrentName(n.GetAddress());
+            if (hr == UIA_E_ELEMENTNOTAVAILABLE) {
+                wprintf(L">> UIA_E_ELEMENTNOTAVAILABLE\n");
+            }
+        }
+    }
+
+}
+
 CComPtr<IUIAutomationElement> find(IUIAutomation* pAutomation, IUIAutomationElement * pSender, _variant_t target, const std::wstring& targetClass) {
     CComPtr<IUIAutomationCondition> pCondition;
     pAutomation->CreatePropertyCondition(UIA_NamePropertyId, target, &pCondition);
@@ -364,9 +394,9 @@ public:
         return S_OK;
     }
     bool isMe(IUIAutomationElement * pSender) {
-        int  pidCurrent;
-        pSender->get_CurrentProcessId(&pidCurrent);
-        return pidCurrent == pid;
+        int  pidCurrent=0;
+        HRESULT hr = pSender->get_CurrentProcessId(&pidCurrent);
+        return pid && pidCurrent == pid;
     }
     // IUIAutomationEventHandler methods
     HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement * pSender, EVENTID eventID)    {
@@ -417,6 +447,16 @@ public:
             break;
         case UIA_Window_WindowOpenedEventId:
             if (isMe(pSender)) {
+                SAFEARRAY *rid;
+                if (SUCCEEDED(pSender->GetRuntimeId(&rid))) {
+                    wprintf(L">> GetRuntimeId\n");
+                }
+                if (name.find(L"Office Add-ins") != std::string::npos) {
+                    invoke(find(pAutomation, pSender, _variant_t(L"SHARED FOLDER"), L""));
+                    tryall(pAutomation, pSender, _variant_t(L"Contiq Companion Beta"));
+                    tryall(pAutomation, pSender, _variant_t(L"Contiq"));
+                    select(find(pAutomation, pSender, _variant_t(L"Contiq Companion Beta"), L""));
+                }
                 if (name.find(L" - PowerPoint") != std::string::npos) {
                     invoke(find(pAutomation, pSender, _variant_t(L"No"), L"Button")); // clear dlg (are there more)? bugbug
                     if (type == 0) {
@@ -424,42 +464,53 @@ public:
                     }
                     else if (type == 1) {
                         select(find(pAutomation, pSender, _variant_t(L"Ribbon Tabs"), L"NetUIPanViewer"));
+                        Sleep(500UL);
                         select(find(pAutomation, pSender, _variant_t(L"Insert"), L"NetUIRibbonTab"));
+                        Sleep(500UL);
                         select(find(pAutomation, pSender, _variant_t(L"Lower Ribbon"), L""));
+                        Sleep(500UL);
                         invoke(find(pAutomation, pSender, _variant_t(L"Store"), L""));
                     }
+                }
+                else if (name == L"Manage Add-in Catalogs" && type == 0) {
+                    invoke(find(pAutomation, pSender, _variant_t(L"OK"), L""));
                 }
                 else if (name == L"Trust Center" && type == 0) {
                     if (invoke(find(pAutomation, pSender, _variant_t(L"Trusted Add-in Catalogs"), L"NetUIListViewItem"))) {
                         Sleep(500UL);
                     }
                     if (insert(find(pAutomation, pSender, _variant_t(L"Catalog Url"), L"NetUITextbox"), getShareName())) {
+                        Sleep(500UL);
                         if (invoke(find(pAutomation, pSender, _variant_t(L"Add catalog"), L"NetUIButton"))) {
                             Sleep(500UL);
                             if (set(find(pAutomation, pSender, _variant_t(L"Show in Menu"), L"NetUICheckbox"))) {
-                                bool b = invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton")); // ignore dup error
-                                invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton")); // ignore dup error
-                                if (invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton")) || b) {
-                                    if (presentation.vt != VT_EMPTY) {
-                                        AutoWrap(DISPATCH_METHOD, NULL, presentation, (LPOLESTR)L"Close", 0);
-                                    }
-                                    pid = 0UL;
-                                    if (app) {
-                                        CComPtr<IUIAutomationElement> found = find(pAutomation, pRoot, _variant_t(L"PowerPoint"), L"PPTFrameClass");
-                                        if (found) {
-                                            invoke(find(pAutomation, found, _variant_t(L"Close"), L""));
-                                        }
-                                        //AutoWrap(DISPATCH_METHOD, NULL, app, (LPOLESTR)L"Quit", 0);
-                                        wprintf(L"-Removing Event Handlers.\n");
-                                        // Remove event handlers etc
-                                        if (pAutomation) {
-                                            pAutomation->RemoveAllEventHandlers();
-                                        }
-                                        app->Release();
-                                        SetEvent(event); // stop thread
-                                    }
-                                }
                             }
+                            Sleep(500UL);
+                            invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton"));
+                            Sleep(500UL);
+                            invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton"));
+                            Sleep(500UL);
+                            invoke(find(pAutomation, pSender, _variant_t(L"OK"), L"NetUIButton"));
+                            /*
+                            if (presentation.vt != VT_EMPTY) {
+                                AutoWrap(DISPATCH_METHOD, NULL, presentation, (LPOLESTR)L"Close", 0);
+                            }
+                            pid = 0UL;
+                            if (app) {
+                                CComPtr<IUIAutomationElement> found = find(pAutomation, pRoot, _variant_t(L"PowerPoint"), L"PPTFrameClass");
+                                if (found) {
+                                    invoke(find(pAutomation, found, _variant_t(L"Close"), L""));
+                                }
+                                //AutoWrap(DISPATCH_METHOD, NULL, app, (LPOLESTR)L"Quit", 0);
+                                wprintf(L"-Removing Event Handlers.\n");
+                                // Remove event handlers etc
+                                if (pAutomation) {
+                                    pAutomation->RemoveAllEventHandlers();
+                                }
+                                app->Release();
+                                SetEvent(event); // stop thread
+                            }
+                            */
                         }
                     }
                 }
@@ -468,15 +519,36 @@ public:
                         Sleep(500UL);
                     }
                     if (invoke(find(pAutomation, pSender, _variant_t(L"Trust Center Settings..."), L"NetUIButton"))) {
+                        Sleep(500UL);
                     }
                 }
                 wprintf(L"ME!>> Event UIA_Window_WindowOpenedEventId Received! (count: %d)\n", _eventCount);
             }
             wprintf(L">> Event WindowOpened Received! (count: %d)\n", _eventCount);
             break;
+        case UIA_NotificationEventId:
+            break;
+        case UIA_SystemAlertEventId:
+            break;
         case UIA_Window_WindowClosedEventId:
+            SAFEARRAY *rid;
+            if (SUCCEEDED(pSender->GetRuntimeId(&rid))) {
+                wprintf(L">> GetRuntimeId\n");
+            }
+
             if (isMe(pSender)) {
+
                 wprintf(L"ME!>> Event WindowClosed Received! (count: %d)\n", _eventCount);
+            }
+            {
+                _bstr_t name;
+                HRESULT hr = pSender->get_CurrentName(name.GetAddress());
+                if (hr == UIA_E_ELEMENTNOTAVAILABLE) {
+                    wprintf(L">> UIA_E_ELEMENTNOTAVAILABLE\n");
+                }
+                else {
+                    wprintf(L">> Event WindowClosed %s\n", (wchar_t*)name);
+                }
             }
             wprintf(L">> Event WindowClosed Received! (count: %d)\n", _eventCount);
             break;
@@ -1352,6 +1424,8 @@ DWORD WINAPI events(LPVOID lpParam){
     hr = pAutomation->AddAutomationEventHandler(UIA_MenuOpenedEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowOpenedEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     hr = pAutomation->AddAutomationEventHandler(UIA_Window_WindowClosedEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
+    hr = pAutomation->AddAutomationEventHandler(UIA_NotificationEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
+    hr = pAutomation->AddAutomationEventHandler(UIA_SystemAlertEventId, pRoot, TreeScope_Subtree, NULL, (IUIAutomationEventHandler*)pEvents);
     
     // let others know we are ready then block for ever or someone frees the sem
     startPPT(pEvents, pAutomation);
@@ -1384,7 +1458,7 @@ void fireItup(int type) {
 int wmain() {
     std::wcout << L"Hello World!\n"; 
 
-    fireItup(0);
+    //fireItup(0);
     fireItup(1);
 
     LPWSTR *szArglist;
