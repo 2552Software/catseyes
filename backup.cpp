@@ -421,40 +421,80 @@ class ImageAnimator {
                 eye.update();
             }
             animatorIndex.update(1.0f / ofGetTargetFrameRate());
-
             path.update();
-            if (path.hasFinishedAnimating()) {
-               // circle();
-            }
             rotator.update();
+            contours.update();
+
+            /* special effects
+            if (path.hasFinishedAnimating()) {
+               circle();
+            }
             if (rotator.hasFinishedAnimating()) {
                 ofxAnimatableOfPoint point;
                 point.setPosition(currentRotation);
                 point.animateTo(ofVec3f(ofRandom(90.0f), ofRandom(90.0f)));
-                //rotator.addTransition(point);
+                rotator.addTransition(point);
             }
+            */
 
+            // track motion
             float max = 0.0f;
-            contours.update();
             if (contours.contourFinder.blobs.size() > 0) {
-                ofVec3f target(0.0f, 0.0f, 0.0f);
-                bool found = false;
+                glm::vec3 target(0.0f, 0.0f, 0.0f);
+                ofDefaultVec3 centroid;
+                // find max size
                 for (auto& blob : contours.contourFinder.blobs) {
-                    if (blob.area > 100 && blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
-                        target = blob.centroid;
-                        found = true;
+                    if (blob.area > max && blob.boundingRect.x > 1 && blob.boundingRect.y > 1) {  //x,y 1,1 is some sort of strange case
+                        max = blob.area;
+                        centroid = blob.centroid;
                     }
                 }
-                if (found) {
+                if (max > 10) {
+                    int w = imgWidth; // camera size not screen size
+                    int h = imgHeight;
+                    std::stringstream ss;
+
+                    double x = (centroid.x / imgWidth)*100.0f; // make it a percent
+                    ss << x;
+                    ofSetWindowTitle(ss.str());
+                    struct Map {
+                        float rangeLow; // percent
+                        float rangeHigh;
+                        float movement;
+                        int action;
+                    };
+                    typedef struct Map myMap;
+                    myMap mapX[]{ // x axis is flipped
+                        {00.0f, 25.0f, 45.0f, 0},
+                        {25.0f, 38.5f, 25.0f, 0},
+                        {50.0f, 62.5f, 00.0f, 0},
+                        {62.5f, 75.0f, -25.0f, 0},
+                        {75.0f, 100.0f, -45.0f, 0},
+                    };
+                    size_t count = sizeof(mapX) / sizeof(myMap);
+                    for (Map row : mapX) {
+                        if (x >= row.rangeLow && x <= row.rangeHigh){
+                            target.y = row.movement;
+                            break;
+                        }
+                    }
+                    currentRotation = target;
+
+                }
+                ofLogNotice() << "insert targert" << target;
+/*
+                if (found && 0) {
                     ofxAnimatableOfPoint point;
                     // get the current point -- smooth things out
-                    point.setPosition(currentLocation);
+                    point.setPosition(currentRotation);
                     point.setCurve(LINEAR);
                     point.setRepeatType(PLAY_ONCE);
                     point.setDuration(0.2f);
                     point.animateTo(target);
                     rotator.insertTransition(point, true);
                 }
+                */
+
             }
         }
         void windowResized(int w, int h) {
@@ -463,22 +503,22 @@ class ImageAnimator {
             }
         }
         void draw() {
-            getCurrentEyeRef().blinkingEnabled = true; // only blink when eye is not doing interesting things
+            getCurrentEyeRef().blinkingEnabled = false; // only blink when eye is not doing interesting things bugbug fix blinking
             // move all eyes so when they switch things are current
             if (!path.hasFinishedAnimating()) {
                //currentLocation = path.getPoint();
               // getCurrentEyeRef().blinkingEnabled = false;
+ // do location later, its just for special effectgs               getCurrentEyeRef().setPosition(currentLocation);
             }
-            // roate current eye as needed
-           if (!rotator.hasFinishedAnimating()) {
-                currentRotation = rotator.getPoint();
-               getCurrentEyeRef().blinkingEnabled = false;
 
-           }
-           getCurrentEyeRef().setPosition(currentLocation);
+
+           // roate current eye as needed
+           //if (!rotator.hasFinishedAnimating()) {
+           //    currentRotation = rotator.getPoint();
+           //    getCurrentEyeRef().blinkingEnabled = false;
+          // }
            rotate(currentRotation);
-
-            getCurrentEyeRef().draw();
+           getCurrentEyeRef().draw();
         }
         void startPlaying() {
             animatorIndex.animateTo(eyes.size()-1);
@@ -505,13 +545,15 @@ class ImageAnimator {
         std::vector<ofSoundPlayer> mySounds;
         void rotate(const ofVec3f& target) {
             std::stringstream ss;
-            //ss << target;
+            ss << target;
             //ofSetWindowTitle(ss.str());
-           // if (fabs(target.x) > 16.0)
-            ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
-            //if (fabs(target.y) > 16.0)
-            ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
-            ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
+           // if (fabs(target.x) > 16.0) draw less
+            if (target.x || target.y || target.z) {
+                ofLogNotice() << "rotate to targert" << target;
+                ofRotateDeg(target.x, 1.0f, 0.0f, 0.0f);
+                ofRotateDeg(target.y, 0.0f, 1.0f, 0.0f);
+                ofRotateDeg(target.z, 0.0f, 0.0f, 1.0f);
+            }
         }
         ofxAnimatableFloat animatorIndex;
         ofxAnimatableQueueofVec3f rotator;
@@ -557,7 +599,7 @@ class ofApp : public ofBaseApp{
             // debug helper
             std::stringstream ss;
             //ss << camera.getDistance();
-            ofSetWindowTitle(ss.str());
+           // ofSetWindowTitle(ss.str());
         }
         
         //--------------------------------------------------------------
