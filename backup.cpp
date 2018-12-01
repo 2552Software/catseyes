@@ -1,5 +1,6 @@
-#pragma once
-
+ #pragma once
+#include <algorithm>
+#include <random>
 #include "ofMain.h"
 #include "ofxAnimatableFloat.h"
 #include "ofxAnimatableOfPoint.h"
@@ -335,7 +336,7 @@ class ImageAnimator {
     public:
         void setup() {
             ofSetFrameRate(60.0f);
-            
+
             animatorIndex.reset(0.0f);
             animatorIndex.setDuration(1.0f);
             animatorIndex.setRepeatType(LOOP_BACK_AND_FORTH);
@@ -345,16 +346,48 @@ class ImageAnimator {
             rotator.setup();
 
             contours.setup();
+
+            string path = DATAPATH;
+            ofDirectory allEyes(path);
+            allEyes.allowExt("png");
+            allEyes.allowExt("jpg");
+            allEyes.listDir();
+            size_t i = 0;
+            for (; i < allEyes.size(); i++) {
+                add(allEyes.getPath(i), allEyes.getName(i));
+            }
+            ofDirectory allSounds(path);
+            allSounds.allowExt("wav");
+            allSounds.allowExt("mp3");
+            allSounds.listDir();
+            for (i = 0; i < allSounds.size(); i++) {
+                ofSoundPlayer sound;
+                sound.load(allSounds.getPath(i));
+                mySounds.push_back(sound);
+            }
+
             startPlaying();
 
         }
-        // convert point on X to a rotation
-        float turnToX(float x) {
-            return ofMap(x, 0.0f, ofGetHeight(), -45.0f, 45.0f);
-        }
-        float turnToY(float y) {
-            return ofMap(y, 0.0f, ofGetWidth(), -45.0f, 45.0f);
-        }
+        //http://www.findsounds.com/ISAPI/search.dll?keywords=cat
+        void sounds() {
+            auto rng = std::default_random_engine{};
+            std::shuffle(std::begin(mySounds), std::end(mySounds), rng);
+
+            for (ofSoundPlayer&player : mySounds) {
+                player.setVolume(ofRandom(2.2f));
+                player.setPosition(ofRandom(1.0f));
+                player.setMultiPlay(true);
+                int end = (int)ofRandom(1, 10);
+                for (int i = 0; i < end; ++i) {
+                    player.play();
+                }
+                // restore for next time
+                player.setMultiPlay(true);
+                player.setPosition(0);
+                player.setVolume(1.0);
+            }
+       } 
         float calc(float val, float start, float end, float len) {
             float result = start;
             float factor = 0.10f;
@@ -370,7 +403,7 @@ class ImageAnimator {
         void circle() {
             ofxAnimatableOfPoint point;
             point.setPosition(currentLocation);
-            point.setDuration(0.20f);
+            point.setDuration(1.20f);
             point.animateTo(ofVec3f(1000, 1000, 10));
             path.addTransition(point);
             point.animateTo(ofVec3f(1000, 2000,200));
@@ -391,14 +424,14 @@ class ImageAnimator {
 
             path.update();
             if (path.hasFinishedAnimating()) {
-                circle();
+               // circle();
             }
             rotator.update();
             if (rotator.hasFinishedAnimating()) {
                 ofxAnimatableOfPoint point;
                 point.setPosition(currentRotation);
                 point.animateTo(ofVec3f(ofRandom(90.0f), ofRandom(90.0f)));
-                rotator.addTransition(point);
+                //rotator.addTransition(point);
             }
 
             float max = 0.0f;
@@ -433,29 +466,23 @@ class ImageAnimator {
             getCurrentEyeRef().blinkingEnabled = true; // only blink when eye is not doing interesting things
             // move all eyes so when they switch things are current
             if (!path.hasFinishedAnimating()) {
-                currentLocation = path.getPoint();
-                getCurrentEyeRef().blinkingEnabled = false;
+               //currentLocation = path.getPoint();
+              // getCurrentEyeRef().blinkingEnabled = false;
             }
             // roate current eye as needed
-            if (!rotator.hasFinishedAnimating()) {
+           if (!rotator.hasFinishedAnimating()) {
                 currentRotation = rotator.getPoint();
-            }
-            getCurrentEyeRef().setPosition(currentLocation);
-            rotate(currentRotation);
+               getCurrentEyeRef().blinkingEnabled = false;
+
+           }
+           getCurrentEyeRef().setPosition(currentLocation);
+           rotate(currentRotation);
 
             getCurrentEyeRef().draw();
         }
         void startPlaying() {
-            string path = DATAPATH;
-            ofDirectory dir(path);
-            dir.allowExt("png");
-            dir.allowExt("jpg");
-            dir.listDir();
-            size_t i = 0;
-            for (; i < dir.size(); i++) {
-                add(dir.getPath(i), dir.getName(i));
-            }
             animatorIndex.animateTo(eyes.size()-1);
+            sounds();
         }
         SuperSphere& getCurrentEyeRef() {
             return eyes[(int)animatorIndex.getCurrentValue()];
@@ -475,6 +502,7 @@ class ImageAnimator {
         ContoursBuilder contours;
 
     private:
+        std::vector<ofSoundPlayer> mySounds;
         void rotate(const ofVec3f& target) {
             std::stringstream ss;
             //ss << target;
