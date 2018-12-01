@@ -1,4 +1,4 @@
- #pragma once
+#pragma once
 #include <algorithm>
 #include <random>
 #include "ofMain.h"
@@ -334,9 +334,30 @@ class ContoursBuilder {
 
 class ImageAnimator {
     public:
+        void buildX() {
+            float percent = 0.0f;// location as a percent of screen size
+            float r = 40.0f; // rotation
+            float incPercent = 5.0f; 
+            float incRotaion = ((r * 2) / (100.0f / incPercent-1));
+            for (int i = 0; percent < 100.0f; ++i, percent += incPercent, r -= incRotaion) {
+                mapX.insert(std::make_pair(std::make_pair(percent, percent + incPercent), Map(r, i + 1)));
+            }
+        }
+        void buildY() {
+            float percent = 0.0f;// location as a percent of screen size
+            float r = 30.0f; // rotation
+            float incPercent = 5.0f;
+            float incRotaion = ((r * 2) / (100.0f / incPercent - 1));
+            for (int i = 0; percent < 100.0f; ++i, percent += incPercent, r -= incRotaion) {
+                mapY.insert(std::make_pair(std::make_pair(percent, percent + incPercent), Map(r, i + 1)));
+            }
+            int j = 0;
+        }
+
         void setup() {
             ofSetFrameRate(60.0f);
-
+            buildX();
+            buildY();
             animatorIndex.reset(0.0f);
             animatorIndex.setDuration(1.0f);
             animatorIndex.setRepeatType(LOOP_BACK_AND_FORTH);
@@ -459,54 +480,24 @@ class ImageAnimator {
                     double y = (centroid.y / imgHeight)*100.0f; // make it a percent
                     ss << x << " , " << y;
                     ofSetWindowTitle(ss.str());
-                    struct Map {
-                        float rangeLow; // percent
-                        float rangeHigh;
-                        float movement;
-                        int action; // things like have the  cat noise when hit
-                    };
-                    typedef struct Map myMap;
-                    myMap mapX[]{ // x axis is flipped
-                        {00.0f, 10.0f,  40.0f, 1}, // far left
-                        {10.0f, 20.0f,  30.0f, 2},
-                        {20.0f, 30.0f,  20.0f, 3},
-                        {30.0f, 40.0f,  15.0f, 4},
-                        {40.0f, 50.0f,  10.0f, 5},
-                        {50.0f, 60.0f,  00.0f, 6},
-                        {60.0f, 70.0f, -10.0f, 7},
-                        {70.0f, 80.0f, -20.0f, 8},
-                        {80.0f, 90.0f, -30.0f, 9},
-                        {90.0f, 100.0f, -40.0f, 10},// far right
-                    };
-                    myMap mapY[]{ 
-                        {00.0f, 10.0f,  -45.0f, 1}, // lower
-                        {10.0f, 20.0f,  -35.0f, 2},
-                        {20.0f, 30.0f,  -20.0f, 3},
-                        {30.0f, 40.0f,  -15.0f, 4},
-                        {40.0f, 50.0f,  -10.0f, 5},
-                        {50.0f, 60.0f, 00.0f, 6},
-                        {60.0f, 70.0f, 10.0f, 7},
-                        {70.0f, 80.0f, 20.0f, 8},
-                        {80.0f, 90.0f, 35.0f, 9},
-                        {90.0f, 100.0f, 45.0f, 10},// upper
-                    };
                     std::map<std::pair<int, int>, int> thingsToDo;
                     thingsToDo.insert(std::make_pair(std::make_pair(1,1), 1)); // upper left cat noise
 
-                    size_t count = sizeof(mapX) / sizeof(myMap);
                     int xAction = 0; // none
                     int yAction = 0; // none
-                    for (Map row : mapX) {
-                        if (x >= row.rangeLow && x <= row.rangeHigh){
-                            target.y = row.movement;
-                            xAction = row.action;
+                    if (mapX.find(std::make_pair(xAction, yAction)) != mapX.end()) {
+                    }
+                    for (auto& row : mapX) {
+                        if (x >= row.first.first && x <= row.first.second){
+                            target.y = row.second.rotation;
+                            xAction = row.second.action;
                             break;
                         }
                     }
-                    for (Map row : mapY) {
-                        if (y >= row.rangeLow && y <= row.rangeHigh) {
-                            target.x = row.movement;
-                            yAction = row.action;
+                    for (auto& row : mapY) {
+                        if (y >= row.first.first && y <= row.first.second) {
+                            target.x = row.second.rotation;
+                            yAction = row.second.action;
                             break;
                         }
                     }
@@ -599,6 +590,18 @@ class ImageAnimator {
         std::vector<SuperSphere> eyes;
         ofVec3f currentLocation;
         ofVec3f currentRotation;
+        class Map {
+        public:
+            Map(float r, int a) {
+                rotation = r;
+                action = a;
+            }
+            float rotation;
+            int action; // things like have the  cat noise when hit
+        };
+        std::map<std::pair<float, float>, Map> mapX;
+        std::map<std::pair<float, float>, Map> mapY;
+
     };
 
 
