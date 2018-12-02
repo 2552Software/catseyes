@@ -1,4 +1,4 @@
-#pragma once
+ #pragma once
 #include <algorithm>
 #include <random>
 #include "ofMain.h"
@@ -334,26 +334,6 @@ class ContoursBuilder {
 
 class ImageAnimator {
     public:
-        void buildX() {
-            float percent = 0.0f;// location as a percent of screen size
-            float r = 40.0f; // rotation
-            float incPercent = 5.0f; 
-            float incRotaion = ((r * 2) / (100.0f / incPercent-1));
-            for (int i = 0; percent < 100.0f; ++i, percent += incPercent, r -= incRotaion) {
-                mapX.insert(std::make_pair(std::make_pair(percent, percent + incPercent), Map(r, i + 1)));
-            }
-        }
-        void buildY() {
-            float percent = 0.0f;// location as a percent of screen size
-            float r = 30.0f; // rotation
-            float incPercent = 5.0f;
-            float incRotaion = ((r * 2) / (100.0f / incPercent - 1));
-            for (int i = 0; percent < 100.0f; ++i, percent += incPercent, r -= incRotaion) {
-                mapY.insert(std::make_pair(std::make_pair(percent, percent + incPercent), Map(r, i + 1)));
-            }
-            int j = 0;
-        }
-
         void setup() {
             ofSetFrameRate(60.0f);
             buildX();
@@ -461,7 +441,7 @@ class ImageAnimator {
             // track motion
             float max = 0.0f;
             if (contours.contourFinder.blobs.size() > 0) {
-                glm::vec3 target(0.0f, 0.0f, 0.0f);
+                glm::vec3 target = currentRotation;
                 ofDefaultVec3 centroid;
                 // find max size
                 for (auto& blob : contours.contourFinder.blobs) {
@@ -471,15 +451,12 @@ class ImageAnimator {
                         break; // first is max
                     }
                 }
-                if (max > 10) {
+                if (max > 100) { // fine tune on site
                     int w = imgWidth; // camera size not screen size
                     int h = imgHeight;
-                    std::stringstream ss;
 
                     double x = (centroid.x / imgWidth)*100.0f; // make it a percent
                     double y = (centroid.y / imgHeight)*100.0f; // make it a percent
-                    ss << x << " , " << y;
-                    ofSetWindowTitle(ss.str());
                     std::map<std::pair<int, int>, int> thingsToDo;
                     thingsToDo.insert(std::make_pair(std::make_pair(1,1), 1)); // upper left cat noise
 
@@ -507,11 +484,22 @@ class ImageAnimator {
                             sounds(); // done one for eyese and one for both
                         }
                     }
-                    currentRotation = target;
 
                 }
-                ofLogNotice() << "insert targert" << target;
-/*
+                // if any data 
+                if (max > 10) {
+                    ofLogNotice() << "insert targert" << target;
+                    currentRotation = target;
+                }
+                else {
+                   // no new data so home the eye (?should we add a time?)
+                    currentRotation.set(0.0L, 0.0L, 0.0L);
+                }
+                std::stringstream ss;
+                ss << max;
+                ofSetWindowTitle(ss.str());
+
+                /*
                 if (found && 0) {
                     ofxAnimatableOfPoint point;
                     // get the current point -- smooth things out
@@ -571,6 +559,25 @@ class ImageAnimator {
         ContoursBuilder contours;
 
     private:
+        void buildX() {
+            float percent = 0.0f;// location as a percent of screen size
+            float r = 30.0f; // rotation
+            float incPercent = 5.0f;
+            float incRotaion = ((r * 2) / (100.0f / incPercent - 1));
+            for (int i = 0; percent < 100.0f; ++i, percent += incPercent, r -= incRotaion) {
+                mapX.insert(std::make_pair(std::make_pair(percent, percent + incPercent), Map(r, i + 1)));
+            }
+        }
+        void buildY() {
+            float percent = 0.0f;// location as a percent of screen size
+            float r = -20.0f; // rotation
+            float incPercent = 5.0f;
+            float incRotaion = ((r * 2) / (100.0f / incPercent - 1));
+            for (int i = 0; percent < 100.0f; ++i, percent += incPercent, r -= incRotaion) {
+                mapY.insert(std::make_pair(std::make_pair(percent, percent + incPercent), Map(r, i + 1)));
+            }
+        }
+
         std::vector<ofSoundPlayer> mySounds;
         void rotate(const ofVec3f& target) {
             std::stringstream ss;
